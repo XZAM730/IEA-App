@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import db from "./server/db";
 import { v4 as uuidv4 } from "uuid";
+import path from "path";
 
 const JWT_SECRET = process.env.JWT_SECRET || "iea-secret-key-2026";
 
@@ -23,19 +24,28 @@ async function startServer() {
   // Auth: Register
   app.post("/api/auth/register", async (req, res) => {
     const { name, email, password } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
+    
     try {
+      // Check if user already exists
+      const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(normalizedEmail);
+      if (existing) {
+        return res.status(400).json({ error: "Email already registered" });
+      }
+
       const hashedPassword = await bcrypt.hash(password, 10);
       const id = uuidv4();
       const idNumber = `IEA-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
       const joinedDate = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
       
       db.prepare('INSERT INTO users (id, name, email, password, id_number, joined_date) VALUES (?, ?, ?, ?, ?, ?)').run(
-        id, name, email, hashedPassword, idNumber, joinedDate
+        id, name, normalizedEmail, hashedPassword, idNumber, joinedDate
       );
       
       const token = jwt.sign({ id }, JWT_SECRET);
-      res.json({ token, user: { id, name, email, idNumber, joinedDate } });
+      res.json({ token, user: { id, name, email: normalizedEmail, idNumber, joinedDate, is_verified: 0, card_theme: 'classic' } });
     } catch (error: any) {
+      console.error("Registration error:", error);
       res.status(400).json({ error: error.message });
     }
   });
@@ -58,14 +68,33 @@ async function startServer() {
   // Auth: Login
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
+    const normalizedEmail = email?.trim().toLowerCase();
+    
     try {
-      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
-      if (!user || !(await bcrypt.compare(password, user.password))) {
+      const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(normalizedEmail) as any;
+      if (!user) {
+        console.log(`Login failed: User not found for email ${normalizedEmail}`);
         return res.status(401).json({ error: "Invalid credentials" });
       }
+      
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        console.log(`Login failed: Password mismatch for email ${normalizedEmail}`);
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
       const token = jwt.sign({ id: user.id }, JWT_SECRET);
-      res.json({ token, user: { id: user.id, name: user.name, email: user.email, idNumber: user.id_number, joinedDate: user.joined_date } });
+      res.json({ token, user: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email, 
+        idNumber: user.id_number, 
+        joinedDate: user.joined_date,
+        is_verified: user.is_verified,
+        card_theme: user.card_theme
+      } });
     } catch (error: any) {
+      console.error("Login error:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -324,11 +353,14 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     app.use(express.static("dist"));
+    app.get("*", (req, res) => {
+      res.sendFile(path.resolve("dist", "index.html"));
+    });
   }
 
   const PORT = 3000;
   httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`IEA Server is live on http://0.0.0.0:${PORT}`);
   });
 }
 

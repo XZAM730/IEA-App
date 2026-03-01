@@ -82,6 +82,26 @@ db.exec(`
     FOREIGN KEY(community_id) REFERENCES communities(id),
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS news (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    category TEXT NOT NULL,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    from_user_id TEXT NOT NULL,
+    type TEXT NOT NULL, -- 'like', 'comment', 'follow'
+    post_id TEXT,
+    is_read INTEGER DEFAULT 0,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(from_user_id) REFERENCES users(id)
+  );
 `);
 
 // Seed communities
