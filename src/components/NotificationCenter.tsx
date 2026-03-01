@@ -69,8 +69,12 @@ export const NotificationCenter = ({ user, onClose }: { user: any, onClose: () =
               key={n.id} 
               className={`flex items-center gap-4 p-4 rounded-2xl transition-colors ${n.is_read ? 'opacity-50' : 'bg-black/5'}`}
             >
-              <div className="w-10 h-10 rounded-full bg-white border border-black/10 flex items-center justify-center flex-shrink-0">
-                {getIcon(n.type)}
+              <div className="w-10 h-10 rounded-full bg-white border border-black/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {n.from_avatar_url ? (
+                  <img src={n.from_avatar_url} alt={n.from_name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  getIcon(n.type)
+                )}
               </div>
               <div className="flex-1">
                 <p className="text-sm">

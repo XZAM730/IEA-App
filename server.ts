@@ -48,7 +48,7 @@ async function startServer() {
       );
       
       const token = jwt.sign({ id }, JWT_SECRET);
-      res.json({ token, user: { id, name, email: normalizedEmail, idNumber, joinedDate, is_verified: 0, card_theme: 'classic' } });
+      res.json({ token, user: { id, name, email: normalizedEmail, idNumber, joinedDate, is_verified: 0, card_theme: 'classic', avatar_url: null, bio: null } });
     } catch (error: any) {
       console.error("Registration error:", error);
       res.status(400).json({ error: error.message });
@@ -62,7 +62,7 @@ async function startServer() {
     const token = authHeader.split(" ")[1];
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme FROM users WHERE id = ?').get(decoded.id) as any;
+      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio FROM users WHERE id = ?').get(decoded.id) as any;
       if (!user) return res.status(404).json({ error: "User not found" });
       res.json({ user });
     } catch (e) {
@@ -96,7 +96,9 @@ async function startServer() {
         idNumber: user.id_number, 
         joinedDate: user.joined_date,
         is_verified: user.is_verified,
-        card_theme: user.card_theme
+        card_theme: user.card_theme,
+        avatar_url: user.avatar_url,
+        bio: user.bio
       } });
     } catch (error: any) {
       console.error("Login error:", error);
@@ -104,12 +106,26 @@ async function startServer() {
     }
   });
 
+  // Posts: Get for user
+  app.get("/api/users/:userId/posts", (req, res) => {
+    const posts = db.prepare(`
+      SELECT p.*, u.name as author, u.avatar_url as authorAvatar,
+      (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes,
+      (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments
+      FROM posts p 
+      JOIN users u ON p.user_id = u.id 
+      WHERE p.user_id = ?
+      ORDER BY p.timestamp DESC
+    `).all(req.params.userId);
+    res.json(posts);
+  });
+
   // Posts: Get all
   app.get("/api/posts", (req, res) => {
     const posts = db.prepare(`
-      SELECT p.*, u.name as author, 
+      SELECT p.*, u.name as author, u.avatar_url as authorAvatar,
       (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes,
-      0 as comments
+      (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments
       FROM posts p 
       JOIN users u ON p.user_id = u.id 
       ORDER BY p.timestamp DESC
@@ -126,17 +142,39 @@ async function startServer() {
   // Users: Search
   app.get("/api/users/search", (req, res) => {
     const { q } = req.query;
-    const users = db.prepare('SELECT id, name, id_number FROM users WHERE name LIKE ? OR id_number LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
+    const users = db.prepare('SELECT id, name, id_number, avatar_url FROM users WHERE name LIKE ? OR id_number LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
     res.json(users);
   });
 
   // Profile: Get stats
   app.get("/api/users/:id/stats", (req, res) => {
     const { id } = req.params;
+    const user = db.prepare('SELECT name, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio FROM users WHERE id = ?').get(id) as any;
+    if (!user) return res.status(404).json({ error: "User not found" });
+    
     const posts = db.prepare('SELECT COUNT(*) as count FROM posts WHERE user_id = ?').get(id) as any;
     const followers = db.prepare('SELECT COUNT(*) as count FROM follows WHERE following_id = ?').get(id) as any;
     const following = db.prepare('SELECT COUNT(*) as count FROM follows WHERE follower_id = ?').get(id) as any;
-    res.json({ posts: posts.count, followers: followers.count, following: following.count });
+    res.json({ ...user, posts: posts.count, followers: followers.count, following: following.count });
+  });
+
+  // Profile: Update
+  app.put("/api/users/profile", (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const { name, bio, avatar_url, card_theme } = req.body;
+      
+      db.prepare('UPDATE users SET name = ?, bio = ?, avatar_url = ?, card_theme = ? WHERE id = ?')
+        .run(name, bio, avatar_url, card_theme, decoded.id);
+      
+      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio FROM users WHERE id = ?').get(decoded.id) as any;
+      res.json({ user });
+    } catch (e) {
+      res.status(401).json({ error: "Invalid token" });
+    }
   });
 
   // Comments: Get for post
@@ -160,7 +198,7 @@ async function startServer() {
   // Notifications: Get for user
   app.get("/api/notifications/:userId", (req, res) => {
     const notifications = db.prepare(`
-      SELECT n.*, u.name as from_name 
+      SELECT n.*, u.name as from_name, u.avatar_url as from_avatar_url
       FROM notifications n JOIN users u ON n.from_user_id = u.id 
       WHERE n.user_id = ? ORDER BY n.timestamp DESC LIMIT 20
     `).all(req.params.userId);
@@ -269,7 +307,7 @@ async function startServer() {
       db.prepare('INSERT INTO posts (id, user_id, content) VALUES (?, ?, ?)').run(id, userId, content);
       
       const post = db.prepare(`
-        SELECT p.*, u.name as author, 0 as likes, 0 as comments 
+        SELECT p.*, u.name as author, u.avatar_url as authorAvatar, 0 as likes, 0 as comments 
         FROM posts p JOIN users u ON p.user_id = u.id 
         WHERE p.id = ?
       `).get(id);
@@ -340,7 +378,17 @@ async function startServer() {
       const { senderId, receiverId, text } = data;
       const id = uuidv4();
       db.prepare('INSERT INTO messages (id, sender_id, receiver_id, text) VALUES (?, ?, ?, ?)').run(id, senderId, receiverId, text);
-      const msg = { id, senderId, receiverId, text, timestamp: new Date().toISOString() };
+      
+      const sender = db.prepare('SELECT name, avatar_url FROM users WHERE id = ?').get(senderId) as any;
+      const msg = { 
+        id, 
+        senderId, 
+        receiverId, 
+        text, 
+        senderName: sender?.name,
+        senderAvatar: sender?.avatar_url,
+        timestamp: new Date().toISOString() 
+      };
       io.emit("message:new", msg);
     });
 

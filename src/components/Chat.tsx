@@ -41,21 +41,33 @@ export const Chat = ({ user }: { user: any }) => {
         {messages.map((msg) => (
           <motion.div
             key={msg.id}
-            initial={{ opacity: 0, x: msg.senderId === user.id ? 20 : -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className={`flex ${msg.senderId === user.id ? "justify-end" : "justify-start"}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`flex gap-3 ${msg.senderId === user.id ? "flex-row-reverse" : "flex-row"}`}
           >
-            <div className={`max-w-[80%] p-4 rounded-2xl ${
-              msg.senderId === user.id 
-                ? "bg-black text-white rounded-tr-none" 
-                : "bg-black/5 text-black rounded-tl-none"
-            }`}>
-              <p className="text-sm">{msg.text}</p>
-              <p className={`text-[8px] uppercase tracking-widest mt-1 opacity-40 ${
-                msg.senderId === user.id ? "text-right" : "text-left"
+            <div className="w-8 h-8 rounded-full bg-black/10 overflow-hidden border border-black/5 flex-shrink-0 mt-1">
+              {msg.senderAvatar ? (
+                <img src={msg.senderAvatar} alt={msg.senderName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="w-full h-full bg-black" />
+              )}
+            </div>
+            <div className={`max-w-[75%] space-y-1 ${msg.senderId === user.id ? "items-end" : "items-start"}`}>
+              {msg.senderId !== user.id && (
+                <p className="text-[10px] font-bold opacity-40 ml-1 uppercase tracking-widest">{msg.senderName}</p>
+              )}
+              <div className={`p-4 rounded-2xl ${
+                msg.senderId === user.id 
+                  ? "bg-black text-white rounded-tr-none" 
+                  : "bg-black/5 text-black rounded-tl-none"
               }`}>
-                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </p>
+                <p className="text-sm">{msg.text}</p>
+                <p className={`text-[8px] uppercase tracking-widest mt-1 opacity-40 ${
+                  msg.senderId === user.id ? "text-right" : "text-left"
+                }`}>
+                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
             </div>
           </motion.div>
         ))}

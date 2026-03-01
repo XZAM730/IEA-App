@@ -9,10 +9,11 @@ interface IDCardProps {
   joinedDate: string;
   isVerified?: boolean;
   theme?: 'classic' | 'mesh' | 'geometric';
+  avatarUrl?: string | null;
   className?: string;
 }
 
-export const IDCard = ({ name, idNumber, joinedDate, isVerified, theme = 'classic', className }: IDCardProps) => {
+export const IDCard = ({ name, idNumber, joinedDate, isVerified, theme = 'classic', avatarUrl, className }: IDCardProps) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -50,8 +51,12 @@ export const IDCard = ({ name, idNumber, joinedDate, isVerified, theme = 'classi
           </div>
           {isVerified && <BadgeCheck size={20} className="text-white animate-pulse" />}
         </div>
-        <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center border border-white/20">
-          <div className="w-6 h-6 rounded-full bg-white" />
+        <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center border border-white/20 overflow-hidden">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-white" />
+          )}
         </div>
       </div>
 

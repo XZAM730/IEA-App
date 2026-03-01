@@ -4,12 +4,16 @@ export interface User {
   email: string;
   idNumber: string;
   joinedDate: string;
-  avatar?: string;
+  avatar_url?: string | null;
+  bio?: string | null;
+  is_verified?: number;
+  card_theme?: string;
 }
 
 export interface Post {
   id: string;
   author: string;
+  authorAvatar?: string | null;
   content: string;
   timestamp: string;
   likes: number;

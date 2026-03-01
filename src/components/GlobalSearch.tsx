@@ -91,8 +91,15 @@ export const GlobalSearch = ({ onClose }: { onClose: () => void }) => {
                 </div>
                 <div className="space-y-2">
                   {results.users.map(u => (
-                    <Link key={u.id} to="/profile" onClick={onClose} className="flex items-center justify-between bg-black/5 p-4 rounded-2xl hover:bg-black/10 transition-colors">
-                      <div>
+                    <Link key={u.id} to="/profile" onClick={onClose} className="flex items-center gap-4 bg-black/5 p-4 rounded-2xl hover:bg-black/10 transition-colors">
+                      <div className="w-10 h-10 rounded-full bg-black/10 overflow-hidden border border-black/5 flex-shrink-0">
+                        {u.avatar_url ? (
+                          <img src={u.avatar_url} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-full h-full bg-black" />
+                        )}
+                      </div>
+                      <div className="flex-1">
                         <p className="font-bold text-sm">{u.name}</p>
                         <p className="text-[10px] font-mono opacity-40">{u.id_number}</p>
                       </div>

@@ -28,9 +28,25 @@ db.exec(`
     id_number TEXT UNIQUE NOT NULL,
     joined_date TEXT NOT NULL,
     is_verified INTEGER DEFAULT 0,
-    card_theme TEXT DEFAULT 'classic' -- 'classic', 'mesh', 'geometric'
+    card_theme TEXT DEFAULT 'classic', -- 'classic', 'mesh', 'geometric'
+    avatar_url TEXT,
+    bio TEXT
   );
+`);
 
+// Migration: Add columns if they don't exist
+const tableInfo = db.prepare("PRAGMA table_info(users)").all() as any[];
+const hasAvatarUrl = tableInfo.some(col => col.name === 'avatar_url');
+const hasBio = tableInfo.some(col => col.name === 'bio');
+
+if (!hasAvatarUrl) {
+  db.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT");
+}
+if (!hasBio) {
+  db.exec("ALTER TABLE users ADD COLUMN bio TEXT");
+}
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,

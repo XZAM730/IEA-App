@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { IDCard } from "./IDCard";
-import { MapPin, Search, UserPlus, UserCheck, BarChart3, Palette, Settings as SettingsIcon } from "lucide-react";
+import { MapPin, Search, UserPlus, UserCheck, BarChart3, Palette, Settings as SettingsIcon, Heart, MessageCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
 import socket from "@/src/lib/socket";
@@ -30,11 +30,22 @@ export const Profile = ({ user }: ProfileProps) => {
 
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState(user.name);
+  const [newBio, setNewBio] = useState(user.bio || "");
+  const [newAvatar, setNewAvatar] = useState(user.avatar_url || "");
+  const [userPosts, setUserPosts] = useState<any[]>([]);
 
   useEffect(() => {
     fetch(`/api/users/${user.id}/stats`)
       .then((res) => res.json())
-      .then(setStats);
+      .then((data) => {
+        setStats(data);
+        setNewBio(data.bio || "");
+        setNewAvatar(data.avatar_url || "");
+      });
+
+    fetch(`/api/users/${user.id}/posts`)
+      .then((res) => res.json())
+      .then(setUserPosts);
 
     socket.on("user:follow_update", ({ followerId, followingId }) => {
       if (followingId === user.id || followerId === user.id) {
@@ -49,9 +60,29 @@ export const Profile = ({ user }: ProfileProps) => {
     };
   }, [user.id]);
 
-  const handleUpdateProfile = () => {
-    socket.emit("user:update_profile", { userId: user.id, name: newName });
-    setIsEditing(false);
+  const handleUpdateProfile = async () => {
+    const token = localStorage.getItem("iea_token");
+    const res = await fetch("/api/users/profile", {
+      method: "PUT",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({ 
+        name: newName, 
+        bio: newBio, 
+        avatar_url: newAvatar,
+        card_theme: cardTheme
+      }),
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      // We should ideally update the global user state here
+      // For now, we'll rely on the socket or a page refresh
+      socket.emit("user:update_profile", data.user);
+      setIsEditing(false);
+    }
   };
 
   const handleSearch = async (q: string) => {
@@ -102,7 +133,14 @@ export const Profile = ({ user }: ProfileProps) => {
         joinedDate={user.joinedDate}
         isVerified={user.is_verified}
         theme={cardTheme}
+        avatarUrl={user.avatar_url}
       />
+
+      {user.bio && !isEditing && (
+        <div className="bg-black/5 p-4 rounded-2xl">
+          <p className="text-xs leading-relaxed opacity-60">{user.bio}</p>
+        </div>
+      )}
 
       <div className="space-y-6">
         <div className="flex justify-between items-center border-b border-black/5 pb-4">
@@ -202,38 +240,90 @@ export const Profile = ({ user }: ProfileProps) => {
           )}
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col gap-4">
           {isEditing ? (
-            <div className="flex-1 flex gap-2">
-              <input 
-                value={newName} 
-                onChange={(e) => setNewName(e.target.value)}
-                className="flex-1 bg-black/5 border-none rounded-xl px-4 text-xs font-bold"
-              />
-              <button 
-                onClick={handleUpdateProfile}
-                className="bg-black text-white px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
-              >
-                Save
-              </button>
+            <div className="space-y-4 bg-black/5 p-6 rounded-3xl border border-black/10">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Full Name</label>
+                <input 
+                  value={newName} 
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full bg-white border border-black/10 rounded-xl px-4 py-3 text-sm font-bold"
+                  placeholder="Your Name"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Bio</label>
+                <textarea 
+                  value={newBio} 
+                  onChange={(e) => setNewBio(e.target.value)}
+                  className="w-full bg-white border border-black/10 rounded-xl px-4 py-3 text-sm min-h-[80px]"
+                  placeholder="Tell us about yourself..."
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Avatar URL</label>
+                <input 
+                  value={newAvatar} 
+                  onChange={(e) => setNewAvatar(e.target.value)}
+                  className="w-full bg-white border border-black/10 rounded-xl px-4 py-3 text-sm"
+                  placeholder="https://example.com/avatar.jpg"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="flex-1 border border-black/10 py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleUpdateProfile}
+                  className="flex-1 bg-black text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
+                >
+                  Save Changes
+                </button>
+              </div>
             </div>
           ) : (
-            <button 
-              onClick={() => setIsEditing(true)}
-              className="flex-1 bg-black text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
-            >
-              Edit Profile
-            </button>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setIsEditing(true)}
+                className="flex-1 bg-black text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
+              >
+                Edit Profile
+              </button>
+              <button className="flex-1 border border-black/10 py-3 rounded-xl text-xs font-bold uppercase tracking-widest">
+                Share ID
+              </button>
+            </div>
           )}
-          <button className="flex-1 border border-black/10 py-3 rounded-xl text-xs font-bold uppercase tracking-widest">
-            Share ID
-          </button>
         </div>
 
         <div className="grid grid-cols-3 gap-1">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="aspect-square bg-black/5 rounded-sm" />
-          ))}
+          {userPosts.length > 0 ? (
+            userPosts.map((post) => (
+              <div key={post.id} className="aspect-square bg-black/5 rounded-sm overflow-hidden relative group">
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 text-white">
+                  <div className="flex items-center gap-1">
+                    <Heart size={12} fill="white" />
+                    <span className="text-[10px] font-bold">{post.likes}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <MessageCircle size={12} fill="white" />
+                    <span className="text-[10px] font-bold">{post.comments}</span>
+                  </div>
+                </div>
+                <div className="w-full h-full flex items-center justify-center p-2">
+                  <p className="text-[8px] line-clamp-3 opacity-40">{post.content}</p>
+                </div>
+              </div>
+            ))
+          ) : (
+            Array.from({ length: 9 }).map((_, i) => (
+              <div key={i} className="aspect-square bg-black/5 rounded-sm" />
+            ))
+          )}
         </div>
       </div>
     </div>

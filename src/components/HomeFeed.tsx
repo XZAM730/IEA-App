@@ -155,7 +155,13 @@ export const HomeFeed = ({ user }: { user: any }) => {
           >
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-black" />
+                <div className="w-10 h-10 rounded-full bg-black/5 overflow-hidden border border-black/5">
+                  {post.authorAvatar ? (
+                    <img src={post.authorAvatar} alt={post.author} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-full h-full bg-black" />
+                  )}
+                </div>
                 <div>
                   <p className="font-bold text-sm tracking-tight">{post.author}</p>
                   <p className="text-[10px] opacity-40 uppercase tracking-widest">
