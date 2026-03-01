@@ -1,13 +1,13 @@
-import { Home, Newspaper, MessageSquare, User, Settings } from "lucide-react";
+import { Home, Newspaper, MessageSquare, User, Settings, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/src/lib/utils";
 
 const navItems = [
   { icon: Home, label: "Home", path: "/" },
   { icon: Newspaper, label: "News", path: "/news" },
+  { icon: Users, label: "Hub", path: "/hub" },
   { icon: MessageSquare, label: "Chat", path: "/chat" },
   { icon: User, label: "Profile", path: "/profile" },
-  { icon: Settings, label: "Settings", path: "/settings" },
 ];
 
 export const BottomNav = () => {

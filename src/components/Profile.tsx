@@ -1,8 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { IDCard } from "./IDCard";
-import { MapPin, Search, UserPlus, UserCheck } from "lucide-react";
+import { MapPin, Search, UserPlus, UserCheck, BarChart3, Palette } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
 import socket from "@/src/lib/socket";
+import { cn } from "@/src/lib/utils";
+
+const mockActivityData = [
+  { day: 'Mon', activity: 4 },
+  { day: 'Tue', activity: 7 },
+  { day: 'Wed', activity: 5 },
+  { day: 'Thu', activity: 12 },
+  { day: 'Fri', activity: 8 },
+  { day: 'Sat', activity: 15 },
+  { day: 'Sun', activity: 10 },
+];
 
 interface ProfileProps {
   user: any;
@@ -13,6 +25,10 @@ export const Profile = ({ user }: ProfileProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isFollowing, setIsFollowing] = useState<{ [key: string]: boolean }>({});
+  const [cardTheme, setCardTheme] = useState(user.card_theme || 'classic');
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [newName, setNewName] = useState(user.name);
 
   useEffect(() => {
     fetch(`/api/users/${user.id}/stats`)
@@ -32,6 +48,11 @@ export const Profile = ({ user }: ProfileProps) => {
     };
   }, [user.id]);
 
+  const handleUpdateProfile = () => {
+    socket.emit("user:update_profile", { userId: user.id, name: newName });
+    setIsEditing(false);
+  };
+
   const handleSearch = async (q: string) => {
     setSearchQuery(q);
     if (q.length > 2) {
@@ -46,6 +67,15 @@ export const Profile = ({ user }: ProfileProps) => {
   const handleFollow = (targetId: string) => {
     socket.emit("user:follow", { followerId: user.id, followingId: targetId });
     setIsFollowing(prev => ({ ...prev, [targetId]: !prev[targetId] }));
+  };
+
+  const updateTheme = (theme: string) => {
+    setCardTheme(theme);
+    fetch(`/api/users/${user.id}/theme`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme }),
+    });
   };
 
   return (
@@ -64,6 +94,8 @@ export const Profile = ({ user }: ProfileProps) => {
         name={user.name}
         idNumber={user.idNumber}
         joinedDate={user.joinedDate}
+        isVerified={user.is_verified}
+        theme={cardTheme}
       />
 
       <div className="space-y-6">
@@ -84,6 +116,49 @@ export const Profile = ({ user }: ProfileProps) => {
           </div>
         </div>
 
+        {/* Activity Chart */}
+        <div className="bg-black/5 p-6 rounded-3xl space-y-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={16} className="opacity-40" />
+            <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Activity Graph</p>
+          </div>
+          <div className="h-32 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={mockActivityData}>
+                <defs>
+                  <linearGradient id="colorAct" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#000" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#000" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <Area type="monotone" dataKey="activity" stroke="#000" fillOpacity={1} fill="url(#colorAct)" strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Theme Selection */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Palette size={16} className="opacity-40" />
+            <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Card Theme</p>
+          </div>
+          <div className="flex gap-2">
+            {['classic', 'mesh', 'geometric'].map((t) => (
+              <button
+                key={t}
+                onClick={() => updateTheme(t)}
+                className={cn(
+                  "flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all",
+                  cardTheme === t ? "bg-black text-white border-black" : "bg-transparent text-black/40 border-black/10"
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="space-y-4">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-black/20" size={18} />
@@ -95,6 +170,8 @@ export const Profile = ({ user }: ProfileProps) => {
               className="w-full bg-black/5 border-none rounded-2xl pl-12 pr-4 py-3 text-sm focus:ring-1 focus:ring-black"
             />
           </div>
+          
+          {/* ... search results ... */}
 
           {searchResults.length > 0 && (
             <div className="space-y-2 bg-black/5 p-4 rounded-2xl">
@@ -120,9 +197,28 @@ export const Profile = ({ user }: ProfileProps) => {
         </div>
 
         <div className="flex gap-4">
-          <button className="flex-1 bg-black text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest">
-            Edit Profile
-          </button>
+          {isEditing ? (
+            <div className="flex-1 flex gap-2">
+              <input 
+                value={newName} 
+                onChange={(e) => setNewName(e.target.value)}
+                className="flex-1 bg-black/5 border-none rounded-xl px-4 text-xs font-bold"
+              />
+              <button 
+                onClick={handleUpdateProfile}
+                className="bg-black text-white px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
+              >
+                Save
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setIsEditing(true)}
+              className="flex-1 bg-black text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
+            >
+              Edit Profile
+            </button>
+          )}
           <button className="flex-1 border border-black/10 py-3 rounded-xl text-xs font-bold uppercase tracking-widest">
             Share ID
           </button>

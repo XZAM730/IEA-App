@@ -12,9 +12,15 @@ export const News = ({ user }: { user: any }) => {
       .then((res) => res.json())
       .then(setNews);
 
+    socket.on("news:new", (newItem) => {
+      setNews(prev => [newItem, ...prev]);
+    });
+
     fetch(`/api/users/${user.id}/bookmarks`)
       .then((res) => res.json())
       .then((data) => setBookmarks(data.map((b: any) => b.id)));
+
+    return () => { socket.off("news:new"); };
   }, [user.id]);
 
   const handleBookmark = (newsId: string) => {

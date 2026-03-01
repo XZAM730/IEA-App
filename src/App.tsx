@@ -7,25 +7,16 @@ import { News } from "./components/News";
 import { Chat } from "./components/Chat";
 import { Profile } from "./components/Profile";
 import { Settings } from "./components/Settings";
-
-/**
- * IEA - Digital Identity & Community App
- * 
- * This application follows a strict monochromatic (Black & White) theme.
- * It features a mobile-first design with a bottom navigation bar.
- * 
- * Core Features:
- * - Authentication (Mocked)
- * - Digital ID Card Generation
- * - Community Feed
- * - Global News
- * - Private Messaging
- * - Profile Management
- */
+import { CommunityHub } from "./components/CommunityHub";
+import { NotificationCenter } from "./components/NotificationCenter";
+import { Bell, Search as SearchIcon } from "lucide-react";
+import { AnimatePresence } from "motion/react";
+import socket from "./lib/socket";
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // Simulate initial loading/auth check
   useEffect(() => {
@@ -34,6 +25,17 @@ export default function App() {
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      socket.on("user:profile_updated", (updatedUser) => {
+        if (updatedUser.id === user.id) {
+          setUser(updatedUser);
+        }
+      });
+      return () => { socket.off("user:profile_updated"); };
+    }
+  }, [user]);
 
   const handleLogin = (userData: any) => {
     setUser(userData);
@@ -57,6 +59,29 @@ export default function App() {
   return (
     <Router>
       <div className="min-h-screen bg-white text-black font-sans selection:bg-black selection:text-white">
+        {/* Header Bar */}
+        <header className="max-w-md mx-auto px-6 pt-6 flex justify-between items-center bg-white sticky top-0 z-40">
+          <h1 className="text-2xl font-black tracking-tighter">IEA</h1>
+          <div className="flex gap-4">
+            <button className="p-2 hover:bg-black/5 rounded-full transition-colors">
+              <SearchIcon size={20} />
+            </button>
+            <button 
+              onClick={() => setShowNotifications(true)}
+              className="p-2 hover:bg-black/5 rounded-full transition-colors relative"
+            >
+              <Bell size={20} />
+              <div className="absolute top-2 right-2 w-2 h-2 bg-black rounded-full border-2 border-white" />
+            </button>
+          </div>
+        </header>
+
+        <AnimatePresence>
+          {showNotifications && (
+            <NotificationCenter user={user} onClose={() => setShowNotifications(false)} />
+          )}
+        </AnimatePresence>
+
         {/* Main Content Area */}
         <main className="max-w-md mx-auto min-h-screen relative">
           <Routes>
@@ -64,6 +89,7 @@ export default function App() {
             <Route path="/news" element={<News user={user} />} />
             <Route path="/chat" element={<Chat user={user} />} />
             <Route path="/profile" element={<Profile user={user} />} />
+            <Route path="/hub" element={<CommunityHub user={user} />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

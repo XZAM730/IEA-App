@@ -11,7 +11,9 @@ db.exec(`
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     id_number TEXT UNIQUE NOT NULL,
-    joined_date TEXT NOT NULL
+    joined_date TEXT NOT NULL,
+    is_verified INTEGER DEFAULT 0,
+    card_theme TEXT DEFAULT 'classic' -- 'classic', 'mesh', 'geometric'
   );
 
   CREATE TABLE IF NOT EXISTS posts (
@@ -66,18 +68,30 @@ db.exec(`
     FOREIGN KEY(news_id) REFERENCES news(id)
   );
 
-  CREATE TABLE IF NOT EXISTS notifications (
+  CREATE TABLE IF NOT EXISTS communities (
     id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    member_count INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS community_members (
+    community_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
-    from_user_id TEXT NOT NULL,
-    type TEXT NOT NULL, -- 'like', 'comment', 'follow'
-    post_id TEXT,
-    is_read INTEGER DEFAULT 0,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id),
-    FOREIGN KEY(from_user_id) REFERENCES users(id)
+    PRIMARY KEY(community_id, user_id),
+    FOREIGN KEY(community_id) REFERENCES communities(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
   );
 `);
+
+// Seed communities
+const commCount = db.prepare('SELECT COUNT(*) as count FROM communities').get() as { count: number };
+if (commCount.count === 0) {
+  const insertComm = db.prepare('INSERT INTO communities (id, name, description) VALUES (?, ?, ?)');
+  insertComm.run('c1', 'IEA Developers', 'Official hub for IEA platform developers.');
+  insertComm.run('c2', 'Digital Identity Global', 'Discussing the future of digital sovereignty.');
+  insertComm.run('c3', 'Minimalist Design', 'A space for monochromatic and minimalist enthusiasts.');
+}
 
 // Seed some news if empty
 const newsCount = db.prepare('SELECT COUNT(*) as count FROM news').get() as { count: number };

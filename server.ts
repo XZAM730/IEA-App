@@ -108,9 +108,76 @@ async function startServer() {
     res.json(bookmarks);
   });
 
+  // Notifications: Get for user
+  app.get("/api/notifications/:userId", (req, res) => {
+    const notifications = db.prepare(`
+      SELECT n.*, u.name as from_name 
+      FROM notifications n JOIN users u ON n.from_user_id = u.id 
+      WHERE n.user_id = ? ORDER BY n.timestamp DESC LIMIT 20
+    `).all(req.params.userId);
+    res.json(notifications);
+  });
+
+  // Notifications: Mark as read
+  app.post("/api/notifications/:userId/read", (req, res) => {
+    db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(req.params.userId);
+    res.json({ success: true });
+  });
+
+  // Users: Update theme
+  app.post("/api/users/:id/theme", (req, res) => {
+    const { theme } = req.body;
+    db.prepare('UPDATE users SET card_theme = ? WHERE id = ?').run(theme, req.params.id);
+    res.json({ success: true });
+  });
+
+  // Communities: Get all
+  app.get("/api/communities", (req, res) => {
+    const communities = db.prepare('SELECT * FROM communities').all();
+    res.json(communities);
+  });
+
+  // Communities: Get members
+  app.get("/api/communities/:id/members", (req, res) => {
+    const members = db.prepare(`
+      SELECT u.id, u.name, u.id_number FROM users u 
+      JOIN community_members cm ON u.id = cm.user_id 
+      WHERE cm.community_id = ?
+    `).all(req.params.id);
+    res.json(members);
+  });
+
   // --- WebSocket Logic ---
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
+
+    // News: Admin push (simulated)
+    socket.on("news:create", (data) => {
+      const { title, summary, category } = data;
+      const id = uuidv4();
+      db.prepare('INSERT INTO news (id, title, summary, category) VALUES (?, ?, ?, ?)').run(id, title, summary, category);
+      const newsItem = db.prepare('SELECT * FROM news WHERE id = ?').get(id);
+      io.emit("news:new", newsItem);
+    });
+
+    socket.on("community:join", (data) => {
+      const { userId, communityId } = data;
+      try {
+        db.prepare('INSERT INTO community_members (community_id, user_id) VALUES (?, ?)').run(communityId, userId);
+        db.prepare('UPDATE communities SET member_count = member_count + 1 WHERE id = ?').run(communityId);
+        const community = db.prepare('SELECT * FROM communities WHERE id = ?').get(communityId);
+        io.emit("community:update", community);
+      } catch (e) {
+        // Already a member
+      }
+    });
+
+    socket.on("user:update_profile", (data) => {
+      const { userId, name } = data;
+      db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, userId);
+      const user = db.prepare('SELECT id, name, id_number, joined_date, is_verified, card_theme FROM users WHERE id = ?').get(userId);
+      io.emit("user:profile_updated", user);
+    });
 
     socket.on("post:create", (data) => {
       const { userId, content } = data;
