@@ -358,10 +358,19 @@ async function startServer() {
     });
   }
 
-  const PORT = 3000;
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`IEA Server is live on http://0.0.0.0:${PORT}`);
-  });
+  const PORT = process.env.PORT || 3000;
+  if (process.env.NODE_ENV !== "production") {
+    httpServer.listen(PORT, "0.0.0.0", () => {
+      console.log(`IEA Server is live on http://0.0.0.0:${PORT}`);
+    });
+  } else {
+    // In production (like Railway), we always listen on the provided PORT
+    httpServer.listen(PORT, "0.0.0.0", () => {
+      console.log(`IEA Production Server is live on port ${PORT}`);
+    });
+  }
+  
+  return app;
 }
 
-startServer();
+export default startServer();
