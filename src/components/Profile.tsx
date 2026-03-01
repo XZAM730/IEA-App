@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { IDCard } from "./IDCard";
-import { MapPin, Search, UserPlus, UserCheck, BarChart3, Palette } from "lucide-react";
+import { MapPin, Search, UserPlus, UserCheck, BarChart3, Palette, Settings as SettingsIcon } from "lucide-react";
+import { Link } from "react-router-dom";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
 import socket from "@/src/lib/socket";
 import { cn } from "@/src/lib/utils";
@@ -85,8 +86,13 @@ export const Profile = ({ user }: ProfileProps) => {
           <h1 className="text-4xl font-bold tracking-tighter">Profile</h1>
           <p className="text-[10px] uppercase tracking-[0.2em] opacity-40">Your Identity</p>
         </div>
-        <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest opacity-40">
-          <MapPin size={12} /> Global
+        <div className="flex items-center gap-4">
+          <Link to="/settings" className="p-2 hover:bg-black/5 rounded-full transition-colors opacity-40 hover:opacity-100">
+            <SettingsIcon size={20} />
+          </Link>
+          <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest opacity-40">
+            <MapPin size={12} /> Global
+          </div>
         </div>
       </div>
 

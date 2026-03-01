@@ -40,6 +40,21 @@ async function startServer() {
     }
   });
 
+  // Auth: Me
+  app.get("/api/auth/me", (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme FROM users WHERE id = ?').get(decoded.id) as any;
+      if (!user) return res.status(404).json({ error: "User not found" });
+      res.json({ user });
+    } catch (e) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
   // Auth: Login
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
@@ -147,6 +162,15 @@ async function startServer() {
     res.json(members);
   });
 
+  // Users: Update verified status
+  app.post("/api/users/:id/verify", (req, res) => {
+    const { isVerified } = req.body;
+    db.prepare('UPDATE users SET is_verified = ? WHERE id = ?').run(isVerified ? 1 : 0, req.params.id);
+    const user = db.prepare('SELECT id, name, id_number, joined_date, is_verified, card_theme FROM users WHERE id = ?').get(req.params.id);
+    io.emit("user:profile_updated", user);
+    res.json({ success: true });
+  });
+
   // --- WebSocket Logic ---
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
@@ -177,6 +201,32 @@ async function startServer() {
       db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, userId);
       const user = db.prepare('SELECT id, name, id_number, joined_date, is_verified, card_theme FROM users WHERE id = ?').get(userId);
       io.emit("user:profile_updated", user);
+    });
+
+    socket.on("post:delete", (data) => {
+      const { userId, postId } = data;
+      const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
+      if (post && post.user_id === userId) {
+        db.prepare('DELETE FROM likes WHERE post_id = ?').run(postId);
+        db.prepare('DELETE FROM comments WHERE post_id = ?').run(postId);
+        db.prepare('DELETE FROM posts WHERE id = ?').run(postId);
+        io.emit("post:deleted", postId);
+      }
+    });
+
+    socket.on("post:update", (data) => {
+      const { userId, postId, content } = data;
+      const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
+      if (post && post.user_id === userId) {
+        db.prepare('UPDATE posts SET content = ? WHERE id = ?').run(content, postId);
+        const updatedPost = db.prepare(`
+          SELECT p.*, u.name as author, 
+          (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes,
+          (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments
+          FROM posts p JOIN users u ON p.user_id = u.id WHERE p.id = ?
+        `).get(postId);
+        io.emit("post:updated", updatedPost);
+      }
     });
 
     socket.on("post:create", (data) => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Heart, MessageCircle, Share2, Plus, Send, X } from "lucide-react";
+import { Heart, MessageCircle, Share2, Plus, Send, MoreHorizontal, Trash2, Edit3 } from "lucide-react";
 import socket from "@/src/lib/socket";
 
 export const HomeFeed = ({ user }: { user: any }) => {
@@ -10,6 +10,8 @@ export const HomeFeed = ({ user }: { user: any }) => {
   const [activeComments, setActiveComments] = useState<string | null>(null);
   const [comments, setComments] = useState<{ [key: string]: any[] }>({});
   const [newComment, setNewComment] = useState("");
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
 
   useEffect(() => {
     fetch("/api/posts")
@@ -18,6 +20,14 @@ export const HomeFeed = ({ user }: { user: any }) => {
 
     socket.on("post:new", (post) => {
       setPosts((prev) => [post, ...prev]);
+    });
+
+    socket.on("post:deleted", (postId) => {
+      setPosts((prev) => prev.filter(p => p.id !== postId));
+    });
+
+    socket.on("post:updated", (updatedPost) => {
+      setPosts((prev) => prev.map(p => p.id === updatedPost.id ? updatedPost : p));
     });
 
     socket.on("post:like_update", ({ postId, likes }) => {
@@ -38,6 +48,8 @@ export const HomeFeed = ({ user }: { user: any }) => {
 
     return () => {
       socket.off("post:new");
+      socket.off("post:deleted");
+      socket.off("post:updated");
       socket.off("post:like_update");
       socket.off("post:comment_new");
     };
@@ -53,6 +65,20 @@ export const HomeFeed = ({ user }: { user: any }) => {
 
   const handleLike = (postId: string) => {
     socket.emit("post:like", { userId: user.id, postId });
+  };
+
+  const handleDelete = (postId: string) => {
+    if (confirm("Are you sure you want to delete this post?")) {
+      socket.emit("post:delete", { userId: user.id, postId });
+    }
+  };
+
+  const handleUpdate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editContent.trim() || !editingPostId) return;
+    socket.emit("post:update", { userId: user.id, postId: editingPostId, content: editContent });
+    setEditingPostId(null);
+    setEditContent("");
   };
 
   const toggleComments = (postId: string) => {
@@ -90,6 +116,15 @@ export const HomeFeed = ({ user }: { user: any }) => {
         </button>
       </div>
 
+      {/* Trending Section */}
+      <div className="overflow-x-auto no-scrollbar flex gap-4 pb-2">
+        {['#DigitalIdentity', '#IEA2026', '#Minimalism', '#Web3', '#Privacy'].map((tag) => (
+          <div key={tag} className="flex-shrink-0 bg-black/5 px-4 py-2 rounded-full border border-black/5">
+            <p className="text-[10px] font-bold tracking-tight">{tag}</p>
+          </div>
+        ))}
+      </div>
+
       {showCreate && (
         <motion.form 
           initial={{ opacity: 0, y: -10 }}
@@ -116,7 +151,7 @@ export const HomeFeed = ({ user }: { user: any }) => {
             key={post.id}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="border border-black/5 rounded-2xl p-6 space-y-4 bg-white shadow-sm"
+            className="border border-black/5 rounded-2xl p-6 space-y-4 bg-white shadow-sm relative group"
           >
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-3">
@@ -128,8 +163,41 @@ export const HomeFeed = ({ user }: { user: any }) => {
                   </p>
                 </div>
               </div>
+              {post.user_id === user.id && (
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => { setEditingPostId(post.id); setEditContent(post.content); }}
+                    className="p-2 hover:bg-black/5 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <Edit3 size={16} className="text-black/40" />
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(post.id)}
+                    className="p-2 hover:bg-black/5 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <Trash2 size={16} className="text-black/40" />
+                  </button>
+                </div>
+              )}
             </div>
-            <p className="text-black/80 leading-relaxed">{post.content}</p>
+
+            {editingPostId === post.id ? (
+              <form onSubmit={handleUpdate} className="space-y-2">
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="w-full bg-black/5 border-none rounded-xl p-3 text-sm focus:ring-1 focus:ring-black"
+                  rows={2}
+                />
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-black text-white py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest">Save</button>
+                  <button type="button" onClick={() => setEditingPostId(null)} className="flex-1 border border-black/10 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest">Cancel</button>
+                </div>
+              </form>
+            ) : (
+              <p className="text-black/80 leading-relaxed">{post.content}</p>
+            )}
+
             <div className="flex items-center gap-6 pt-2">
               <button 
                 onClick={() => handleLike(post.id)}
@@ -145,7 +213,18 @@ export const HomeFeed = ({ user }: { user: any }) => {
                 <MessageCircle size={18} />
                 <span className="text-xs font-bold">{post.comments || 0}</span>
               </button>
-              <button className="flex items-center gap-1.5 text-black/40 hover:text-black transition-colors ml-auto">
+              <button 
+                onClick={() => {
+                  if (navigator.share) {
+                    navigator.share({
+                      title: 'IEA Post',
+                      text: post.content,
+                      url: window.location.href,
+                    });
+                  }
+                }}
+                className="flex items-center gap-1.5 text-black/40 hover:text-black transition-colors ml-auto"
+              >
                 <Share2 size={18} />
               </button>
             </div>

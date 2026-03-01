@@ -9,6 +9,7 @@ import { Profile } from "./components/Profile";
 import { Settings } from "./components/Settings";
 import { CommunityHub } from "./components/CommunityHub";
 import { NotificationCenter } from "./components/NotificationCenter";
+import { GlobalSearch } from "./components/GlobalSearch";
 import { Bell, Search as SearchIcon } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import socket from "./lib/socket";
@@ -17,13 +18,33 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   // Simulate initial loading/auth check
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem("iea_token");
+      if (token) {
+        try {
+          // In a real app, we'd verify the token with the server
+          // For now, we'll assume it's valid if present and fetch user data
+          // We can add a /api/auth/me endpoint for this
+          const res = await fetch("/api/auth/me", {
+            headers: { "Authorization": `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setUser(data.user);
+          } else {
+            localStorage.removeItem("iea_token");
+          }
+        } catch (e) {
+          console.error("Auth check failed", e);
+        }
+      }
       setIsLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
+    };
+    checkAuth();
   }, []);
 
   useEffect(() => {
@@ -63,7 +84,10 @@ export default function App() {
         <header className="max-w-md mx-auto px-6 pt-6 flex justify-between items-center bg-white sticky top-0 z-40">
           <h1 className="text-2xl font-black tracking-tighter">IEA</h1>
           <div className="flex gap-4">
-            <button className="p-2 hover:bg-black/5 rounded-full transition-colors">
+            <button 
+              onClick={() => setShowSearch(true)}
+              className="p-2 hover:bg-black/5 rounded-full transition-colors"
+            >
               <SearchIcon size={20} />
             </button>
             <button 
@@ -80,6 +104,9 @@ export default function App() {
           {showNotifications && (
             <NotificationCenter user={user} onClose={() => setShowNotifications(false)} />
           )}
+          {showSearch && (
+            <GlobalSearch onClose={() => setShowSearch(false)} />
+          )}
         </AnimatePresence>
 
         {/* Main Content Area */}
@@ -90,7 +117,7 @@ export default function App() {
             <Route path="/chat" element={<Chat user={user} />} />
             <Route path="/profile" element={<Profile user={user} />} />
             <Route path="/hub" element={<CommunityHub user={user} />} />
-            <Route path="/settings" element={<Settings />} />
+            <Route path="/settings" element={<Settings user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
