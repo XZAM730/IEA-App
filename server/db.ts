@@ -1,7 +1,21 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 
 const dbPath = process.env.DATABASE_PATH || 'iea.db';
+
+// Ensure the directory for the database exists
+const dbDir = path.dirname(dbPath);
+if (dbDir !== '.' && !fs.existsSync(dbDir)) {
+  try {
+    fs.mkdirSync(dbDir, { recursive: true });
+    console.log(`Created database directory: ${dbDir}`);
+  } catch (err) {
+    console.error(`Failed to create database directory ${dbDir}:`, err);
+  }
+}
+
+console.log(`Initializing database at: ${dbPath}`);
 const db = new Database(dbPath);
 
 // Initialize tables
