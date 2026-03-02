@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import db from "./server/db";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
+import fs from "fs";
 
 const JWT_SECRET = process.env.JWT_SECRET || "iea-secret-key-2026";
 
@@ -398,16 +399,36 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  const distPath = path.join(process.cwd(), "dist");
+  const hasDist = fs.existsSync(distPath);
+  const isProduction = process.env.NODE_ENV === "production" || (hasDist && process.env.NODE_ENV !== "development");
+
+  if (!isProduction) {
+    console.log("Starting in DEVELOPMENT mode with Vite middleware...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static("dist"));
+    console.log(`Starting in PRODUCTION mode. Serving static files from: ${distPath}`);
+    if (!hasDist) {
+      console.error("CRITICAL: 'dist' folder not found! Did you run 'npm run build'?");
+    } else {
+      const indexPath = path.join(distPath, "index.html");
+      if (!fs.existsSync(indexPath)) {
+        console.error(`CRITICAL: 'index.html' not found at ${indexPath}!`);
+      }
+    }
+    
+    app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.resolve("dist", "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("Application build not found. Please ensure 'npm run build' was successful.");
+      }
     });
   }
 
@@ -428,4 +449,7 @@ async function startServer() {
   return app;
 }
 
-export default startServer();
+startServer().catch(err => {
+  console.error("FATAL: Failed to start server:", err);
+  process.exit(1);
+});
