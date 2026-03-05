@@ -1,11 +1,29 @@
 import React, { useState, useEffect } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { IDCard } from "./IDCard";
-import { MapPin, Search, UserPlus, UserCheck, BarChart3, Palette, Settings as SettingsIcon, Heart, MessageCircle } from "lucide-react";
+import { 
+  MapPin, 
+  Search, 
+  UserPlus, 
+  UserCheck, 
+  BarChart3, 
+  Palette, 
+  Settings as SettingsIcon, 
+  Heart, 
+  MessageCircle,
+  Edit3,
+  Link as LinkIcon,
+  Calendar,
+  Grid,
+  Bookmark,
+  Activity,
+  Check
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip } from "recharts";
 import socket from "@/src/lib/socket";
 import { cn } from "@/src/lib/utils";
+import { useToast } from "./Toast";
 
 const mockActivityData = [
   { day: 'Mon', activity: 4 },
@@ -22,6 +40,7 @@ interface ProfileProps {
 }
 
 export const Profile = ({ user }: ProfileProps) => {
+  const { showToast } = useToast();
   const [stats, setStats] = useState({ posts: 0, followers: 0, following: 0 });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -62,26 +81,31 @@ export const Profile = ({ user }: ProfileProps) => {
 
   const handleUpdateProfile = async () => {
     const token = localStorage.getItem("iea_token");
-    const res = await fetch("/api/users/profile", {
-      method: "PUT",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`
-      },
-      body: JSON.stringify({ 
-        name: newName, 
-        bio: newBio, 
-        avatar_url: newAvatar,
-        card_theme: cardTheme
-      }),
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      // We should ideally update the global user state here
-      // For now, we'll rely on the socket or a page refresh
-      socket.emit("user:update_profile", data.user);
-      setIsEditing(false);
+    try {
+      const res = await fetch("/api/users/profile", {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          name: newName, 
+          bio: newBio, 
+          avatar_url: newAvatar,
+          card_theme: cardTheme
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        socket.emit("user:update_profile", data.user);
+        setIsEditing(false);
+        showToast("Identity Updated", "success");
+      } else {
+        showToast("Update Failed", "error");
+      }
+    } catch (e) {
+      showToast("Network Error", "error");
     }
   };
 
@@ -111,217 +135,261 @@ export const Profile = ({ user }: ProfileProps) => {
   };
 
   return (
-    <div className="pb-24 pt-8 px-6 space-y-8">
+    <div className="pb-24 pt-8 px-6 space-y-10">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-bold tracking-tighter">Profile</h1>
-          <p className="text-[10px] uppercase tracking-[0.2em] opacity-40">Your Identity</p>
+          <h1 className="text-5xl font-black tracking-tighter">Identity</h1>
+          <p className="text-[10px] uppercase tracking-[0.4em] font-bold opacity-30">Digital Sovereignty</p>
         </div>
-        <div className="flex items-center gap-4">
-          <Link to="/settings" className="p-2 hover:bg-black/5 rounded-full transition-colors opacity-40 hover:opacity-100">
+        <div className="flex items-center gap-3">
+          <Link to="/settings" className="p-2.5 bg-black/5 hover:bg-black text-black hover:text-white rounded-2xl transition-all duration-300">
             <SettingsIcon size={20} />
           </Link>
-          <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest opacity-40">
-            <MapPin size={12} /> Global
-          </div>
         </div>
       </div>
 
-      <IDCard
-        name={user.name}
-        idNumber={user.idNumber}
-        joinedDate={user.joinedDate}
-        isVerified={user.is_verified}
-        theme={cardTheme}
-        avatarUrl={user.avatar_url}
-      />
-
-      {user.bio && !isEditing && (
-        <div className="bg-black/5 p-4 rounded-2xl">
-          <p className="text-xs leading-relaxed opacity-60">{user.bio}</p>
-        </div>
-      )}
-
       <div className="space-y-6">
-        <div className="flex justify-between items-center border-b border-black/5 pb-4">
-          <div className="text-center flex-1">
-            <p className="text-xl font-bold tracking-tighter">{stats.posts}</p>
-            <p className="text-[10px] uppercase tracking-widest opacity-40">Posts</p>
-          </div>
-          <div className="w-px h-8 bg-black/5" />
-          <div className="text-center flex-1">
-            <p className="text-xl font-bold tracking-tighter">{stats.followers}</p>
-            <p className="text-[10px] uppercase tracking-widest opacity-40">Followers</p>
-          </div>
-          <div className="w-px h-8 bg-black/5" />
-          <div className="text-center flex-1">
-            <p className="text-xl font-bold tracking-tighter">{stats.following}</p>
-            <p className="text-[10px] uppercase tracking-widest opacity-40">Following</p>
-          </div>
-        </div>
+        <IDCard
+          name={user.name}
+          idNumber={user.idNumber}
+          joinedDate={user.joinedDate}
+          isVerified={user.is_verified}
+          theme={cardTheme}
+          avatarUrl={user.avatar_url}
+        />
 
-        {/* Activity Chart */}
-        <div className="bg-black/5 p-6 rounded-3xl space-y-4">
-          <div className="flex items-center gap-2">
-            <BarChart3 size={16} className="opacity-40" />
-            <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Activity Graph</p>
-          </div>
-          <div className="h-32 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={mockActivityData}>
-                <defs>
-                  <linearGradient id="colorAct" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#000" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#000" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <Area type="monotone" dataKey="activity" stroke="#000" fillOpacity={1} fill="url(#colorAct)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+        {/* Theme Selection - Bento Style */}
+        <div className="grid grid-cols-5 gap-2">
+          {['classic', 'mesh', 'geometric', 'glass', 'neon'].map((t) => (
+            <button
+              key={t}
+              onClick={() => updateTheme(t)}
+              className={cn(
+                "py-3 rounded-2xl text-[8px] font-black uppercase tracking-widest border transition-all duration-300",
+                cardTheme === t 
+                  ? "bg-black text-white border-black shadow-lg scale-105" 
+                  : "bg-white text-black/40 border-black/5 hover:border-black/20"
+              )}
+            >
+              {t}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Theme Selection */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Palette size={16} className="opacity-40" />
-            <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Card Theme</p>
+      {/* Stats Bento Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2 bg-black text-white p-6 rounded-[2rem] flex justify-between items-center shadow-xl overflow-hidden relative group">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="relative z-10">
+            <p className="text-4xl font-black tracking-tighter">{stats.posts}</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-50">Total Contributions</p>
           </div>
-          <div className="flex gap-2">
-            {['classic', 'mesh', 'geometric'].map((t) => (
-              <button
-                key={t}
-                onClick={() => updateTheme(t)}
-                className={cn(
-                  "flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all",
-                  cardTheme === t ? "bg-black text-white border-black" : "bg-transparent text-black/40 border-black/10"
-                )}
-              >
-                {t}
-              </button>
+          <div className="relative z-10 flex -space-x-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="w-10 h-10 rounded-full border-2 border-black bg-zinc-800 flex items-center justify-center text-[10px] font-bold">
+                {i === 3 ? '+' : ''}
+              </div>
             ))}
           </div>
         </div>
+        
+        <div className="bg-zinc-100 p-6 rounded-[2rem] space-y-1">
+          <p className="text-3xl font-black tracking-tighter">{stats.followers}</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-40">Followers</p>
+        </div>
+        
+        <div className="bg-zinc-100 p-6 rounded-[2rem] space-y-1">
+          <p className="text-3xl font-black tracking-tighter">{stats.following}</p>
+          <p className="text-[10px] uppercase tracking-[0.2em] font-bold opacity-40">Following</p>
+        </div>
+      </div>
 
-        <div className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-black/20" size={18} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              placeholder="Search users by name or ID..."
-              className="w-full bg-black/5 border-none rounded-2xl pl-12 pr-4 py-3 text-sm focus:ring-1 focus:ring-black"
-            />
+      {/* Bio & Edit Section */}
+      <div className="space-y-4">
+        {isEditing ? (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="space-y-4 bg-white p-8 rounded-[2.5rem] border border-black/5 shadow-2xl"
+          >
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black uppercase tracking-widest opacity-30 ml-1">Full Name</label>
+                <input 
+                  value={newName} 
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="w-full bg-zinc-50 border-none rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 focus:ring-black transition-all"
+                  placeholder="Your Name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black uppercase tracking-widest opacity-30 ml-1">Bio</label>
+                <textarea 
+                  value={newBio} 
+                  onChange={(e) => setNewBio(e.target.value)}
+                  className="w-full bg-zinc-50 border-none rounded-2xl px-5 py-4 text-sm min-h-[100px] focus:ring-2 focus:ring-black transition-all resize-none"
+                  placeholder="Tell us about yourself..."
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black uppercase tracking-widest opacity-30 ml-1">Avatar URL</label>
+                <input 
+                  value={newAvatar} 
+                  onChange={(e) => setNewAvatar(e.target.value)}
+                  className="w-full bg-zinc-50 border-none rounded-2xl px-5 py-4 text-sm focus:ring-2 focus:ring-black transition-all"
+                  placeholder="https://example.com/avatar.jpg"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-4">
+              <button 
+                onClick={() => setIsEditing(false)}
+                className="flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-black/5 hover:bg-black/5 transition-all"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleUpdateProfile}
+                className="flex-1 bg-black text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:scale-[1.02] active:scale-95 transition-all"
+              >
+                Save Changes
+              </button>
+            </div>
+          </motion.div>
+        ) : (
+          <div className="space-y-6">
+            {user.bio && (
+              <div className="bg-zinc-50 p-6 rounded-[2rem] border border-black/5">
+                <p className="text-sm leading-relaxed text-black/60 font-medium italic">"{user.bio}"</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setIsEditing(true)}
+                className="flex-1 bg-black text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:scale-[1.02] active:scale-95 transition-all"
+              >
+                Edit Profile
+              </button>
+              <button className="flex-1 bg-zinc-100 text-black py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all">
+                Share ID
+              </button>
+            </div>
           </div>
-          
-          {/* ... search results ... */}
+        )}
+      </div>
 
+      {/* Activity Chart Section */}
+      <div className="bg-zinc-50 p-8 rounded-[2.5rem] border border-black/5 space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={16} className="opacity-30" />
+            <p className="text-[10px] font-black uppercase tracking-widest opacity-30">Contribution Graph</p>
+          </div>
+          <p className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full">+12% vs last week</p>
+        </div>
+        <div className="h-40 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={mockActivityData}>
+              <defs>
+                <linearGradient id="colorAct" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#000" stopOpacity={0.15}/>
+                  <stop offset="95%" stopColor="#000" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <Tooltip 
+                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '10px', fontWeight: 'bold' }}
+              />
+              <Area type="monotone" dataKey="activity" stroke="#000" fillOpacity={1} fill="url(#colorAct)" strokeWidth={3} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* User Discovery */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 ml-1">
+          <Search size={14} className="opacity-30" />
+          <p className="text-[10px] font-black uppercase tracking-widest opacity-30">Network Discovery</p>
+        </div>
+        <div className="relative group">
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-black/20 group-focus-within:text-black transition-colors" size={18} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search the IEA network..."
+            className="w-full bg-zinc-100 border-none rounded-[1.5rem] pl-14 pr-6 py-4 text-sm font-bold focus:ring-2 focus:ring-black transition-all"
+          />
+        </div>
+        
+        <AnimatePresence>
           {searchResults.length > 0 && (
-            <div className="space-y-2 bg-black/5 p-4 rounded-2xl">
-              <p className="text-[8px] font-bold uppercase tracking-widest opacity-40 mb-2">Search Results</p>
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="space-y-2 bg-zinc-50 p-4 rounded-[2rem] border border-black/5"
+            >
               {searchResults.map((u) => (
-                <div key={u.id} className="flex items-center justify-between bg-white p-3 rounded-xl shadow-sm">
-                  <div>
-                    <p className="font-bold text-sm tracking-tight">{u.name}</p>
-                    <p className="text-[10px] font-mono opacity-40">{u.id_number}</p>
+                <div key={u.id} className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-black/5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center text-white font-black text-xs">
+                      {u.avatar_url ? <img src={u.avatar_url} className="w-full h-full object-cover rounded-xl" /> : u.name[0]}
+                    </div>
+                    <div>
+                      <p className="font-black text-sm tracking-tight">{u.name}</p>
+                      <p className="text-[9px] font-mono font-bold opacity-30 tracking-tighter">{u.id_number}</p>
+                    </div>
                   </div>
                   <button 
                     onClick={() => handleFollow(u.id)}
-                    className={`p-2 rounded-lg transition-colors ${
-                      isFollowing[u.id] ? "bg-black text-white" : "bg-black/5 text-black"
-                    }`}
+                    className={cn(
+                      "p-3 rounded-xl transition-all duration-300",
+                      isFollowing[u.id] ? "bg-black text-white scale-110" : "bg-zinc-100 text-black hover:bg-black hover:text-white"
+                    )}
                   >
                     {isFollowing[u.id] ? <UserCheck size={16} /> : <UserPlus size={16} />}
                   </button>
                 </div>
               ))}
-            </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
+      </div>
 
-        <div className="flex flex-col gap-4">
-          {isEditing ? (
-            <div className="space-y-4 bg-black/5 p-6 rounded-3xl border border-black/10">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Full Name</label>
-                <input 
-                  value={newName} 
-                  onChange={(e) => setNewName(e.target.value)}
-                  className="w-full bg-white border border-black/10 rounded-xl px-4 py-3 text-sm font-bold"
-                  placeholder="Your Name"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Bio</label>
-                <textarea 
-                  value={newBio} 
-                  onChange={(e) => setNewBio(e.target.value)}
-                  className="w-full bg-white border border-black/10 rounded-xl px-4 py-3 text-sm min-h-[80px]"
-                  placeholder="Tell us about yourself..."
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Avatar URL</label>
-                <input 
-                  value={newAvatar} 
-                  onChange={(e) => setNewAvatar(e.target.value)}
-                  className="w-full bg-white border border-black/10 rounded-xl px-4 py-3 text-sm"
-                  placeholder="https://example.com/avatar.jpg"
-                />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button 
-                  onClick={() => setIsEditing(false)}
-                  className="flex-1 border border-black/10 py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={handleUpdateProfile}
-                  className="flex-1 bg-black text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-4">
-              <button 
-                onClick={() => setIsEditing(true)}
-                className="flex-1 bg-black text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest"
-              >
-                Edit Profile
-              </button>
-              <button className="flex-1 border border-black/10 py-3 rounded-xl text-xs font-bold uppercase tracking-widest">
-                Share ID
-              </button>
-            </div>
-          )}
+      {/* Post Grid */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between ml-1">
+          <p className="text-[10px] font-black uppercase tracking-widest opacity-30">Contribution Archive</p>
+          <p className="text-[10px] font-black opacity-30">{userPosts.length} Items</p>
         </div>
-
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-3 gap-2">
           {userPosts.length > 0 ? (
             userPosts.map((post) => (
-              <div key={post.id} className="aspect-square bg-black/5 rounded-sm overflow-hidden relative group">
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 text-white">
-                  <div className="flex items-center gap-1">
-                    <Heart size={12} fill="white" />
-                    <span className="text-[10px] font-bold">{post.likes}</span>
+              <motion.div 
+                key={post.id} 
+                whileHover={{ scale: 0.98 }}
+                className="aspect-square bg-zinc-100 rounded-2xl overflow-hidden relative group border border-black/5"
+              >
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-4 text-white backdrop-blur-[2px]">
+                  <div className="flex flex-col items-center gap-1">
+                    <Heart size={14} fill="white" />
+                    <span className="text-[10px] font-black">{post.likes}</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <MessageCircle size={12} fill="white" />
-                    <span className="text-[10px] font-bold">{post.comments}</span>
+                  <div className="flex flex-col items-center gap-1">
+                    <MessageCircle size={14} fill="white" />
+                    <span className="text-[10px] font-black">{post.comments}</span>
                   </div>
                 </div>
-                <div className="w-full h-full flex items-center justify-center p-2">
-                  <p className="text-[8px] line-clamp-3 opacity-40">{post.content}</p>
+                <div className="w-full h-full flex items-center justify-center p-4">
+                  <p className="text-[9px] line-clamp-4 opacity-40 font-bold leading-tight">{post.content}</p>
                 </div>
-              </div>
+              </motion.div>
             ))
           ) : (
-            Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="aspect-square bg-black/5 rounded-sm" />
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="aspect-square bg-zinc-50 rounded-2xl border border-black/5 animate-pulse" />
             ))
           )}
         </div>

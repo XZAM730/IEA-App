@@ -8,6 +8,10 @@ import db from "./server/db";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || "iea-secret-key-2026";
 
@@ -23,6 +27,28 @@ async function startServer() {
   // Health Check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // Online Users Tracking
+  const onlineUsers = new Set<string>();
+
+  // Communities: Search
+  app.get("/api/communities/search", (req, res) => {
+    const { q } = req.query;
+    const communities = db.prepare('SELECT * FROM communities WHERE name LIKE ? OR description LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
+    res.json(communities);
+  });
+
+  // News: Search
+  app.get("/api/news/search", (req, res) => {
+    const { q } = req.query;
+    const news = db.prepare('SELECT * FROM news WHERE title LIKE ? OR summary LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
+    res.json(news);
+  });
+
+  // Online Status: Get
+  app.get("/api/users/online", (req, res) => {
+    res.json({ onlineCount: onlineUsers.size, onlineIds: Array.from(onlineUsers) });
   });
 
   // --- API Routes ---
@@ -246,6 +272,19 @@ async function startServer() {
 
   // --- WebSocket Logic ---
   io.on("connection", (socket) => {
+    let currentUserId: string | null = null;
+
+    socket.on("user:online", (userId) => {
+      currentUserId = userId;
+      onlineUsers.add(userId);
+      io.emit("user:status_change", { userId, status: "online", onlineCount: onlineUsers.size });
+    });
+
+    socket.on("chat:typing", (data) => {
+      const { userId, isTyping } = data;
+      socket.broadcast.emit("chat:typing_update", { userId, isTyping });
+    });
+
     console.log("User connected:", socket.id);
 
     // News: Admin push (simulated)
@@ -321,11 +360,18 @@ async function startServer() {
       const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
       
       try {
+        const notifId = uuidv4();
         db.prepare('INSERT INTO likes (user_id, post_id) VALUES (?, ?)').run(userId, postId);
         if (post && post.user_id !== userId) {
           db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type, post_id) VALUES (?, ?, ?, ?, ?)').run(
-            uuidv4(), post.user_id, userId, 'like', postId
+            notifId, post.user_id, userId, 'like', postId
           );
+          const notif = db.prepare(`
+            SELECT n.*, u.name as from_name, u.avatar_url as from_avatar_url
+            FROM notifications n JOIN users u ON n.from_user_id = u.id 
+            WHERE n.id = ?
+          `).get(notifId);
+          io.emit("notification:new", notif);
         }
       } catch (e) {
         db.prepare('DELETE FROM likes WHERE user_id = ? AND post_id = ?').run(userId, postId);
@@ -345,9 +391,16 @@ async function startServer() {
       
       const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
       if (post && post.user_id !== userId) {
+        const notifId = uuidv4();
         db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type, post_id) VALUES (?, ?, ?, ?, ?)').run(
-          uuidv4(), post.user_id, userId, 'comment', postId
+          notifId, post.user_id, userId, 'comment', postId
         );
+        const notif = db.prepare(`
+          SELECT n.*, u.name as from_name, u.avatar_url as from_avatar_url
+          FROM notifications n JOIN users u ON n.from_user_id = u.id 
+          WHERE n.id = ?
+        `).get(notifId);
+        io.emit("notification:new", notif);
       }
       
       io.emit("post:comment_new", { postId, comment });
@@ -356,10 +409,17 @@ async function startServer() {
     socket.on("user:follow", (data) => {
       const { followerId, followingId } = data;
       try {
+        const notifId = uuidv4();
         db.prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)').run(followerId, followingId);
         db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type) VALUES (?, ?, ?, ?)').run(
-          uuidv4(), followingId, followerId, 'follow'
+          notifId, followingId, followerId, 'follow'
         );
+        const notif = db.prepare(`
+          SELECT n.*, u.name as from_name, u.avatar_url as from_avatar_url
+          FROM notifications n JOIN users u ON n.from_user_id = u.id 
+          WHERE n.id = ?
+        `).get(notifId);
+        io.emit("notification:new", notif);
       } catch (e) {
         db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?').run(followerId, followingId);
       }
@@ -394,16 +454,20 @@ async function startServer() {
     });
 
     socket.on("disconnect", () => {
+      if (currentUserId) {
+        onlineUsers.delete(currentUserId);
+        io.emit("user:status_change", { userId: currentUserId, status: "offline", onlineCount: onlineUsers.size });
+      }
       console.log("User disconnected");
     });
   });
 
   // Vite middleware for development
-  const distPath = path.join(process.cwd(), "dist");
+  const isProduction = process.env.NODE_ENV === "production";
+  const distPath = path.resolve(__dirname, "dist");
   const hasDist = fs.existsSync(distPath);
-  const isProduction = process.env.NODE_ENV === "production" || (hasDist && process.env.NODE_ENV !== "development");
 
-  if (!isProduction) {
+  if (!isProduction && !hasDist) {
     console.log("Starting in DEVELOPMENT mode with Vite middleware...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -412,22 +476,25 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     console.log(`Starting in PRODUCTION mode. Serving static files from: ${distPath}`);
+    
     if (!hasDist) {
-      console.error("CRITICAL: 'dist' folder not found! Did you run 'npm run build'?");
-    } else {
-      const indexPath = path.join(distPath, "index.html");
-      if (!fs.existsSync(indexPath)) {
-        console.error(`CRITICAL: 'index.html' not found at ${indexPath}!`);
-      }
+      console.error("CRITICAL ERROR: 'dist' folder not found! Deployment will fail to serve the frontend.");
     }
     
     app.use(express.static(distPath));
+    
+    // API 404 handler
+    app.use("/api/*", (req, res) => {
+      res.status(404).json({ error: "API route not found" });
+    });
+
+    // SPA fallback
     app.get("*", (req, res) => {
       const indexPath = path.join(distPath, "index.html");
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
       } else {
-        res.status(404).send("Application build not found. Please ensure 'npm run build' was successful.");
+        res.status(404).send("Frontend build not found. Please ensure 'npm run build' was successful.");
       }
     });
   }
