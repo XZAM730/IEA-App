@@ -51,6 +51,8 @@ export const Profile = ({ user }: ProfileProps) => {
   const [newName, setNewName] = useState(user.name);
   const [newBio, setNewBio] = useState(user.bio || "");
   const [newAvatar, setNewAvatar] = useState(user.avatar_url || "");
+  const [skills, setSkills] = useState<string[]>(user.skills ? JSON.parse(user.skills) : []);
+  const [newSkill, setNewSkill] = useState("");
   const [userPosts, setUserPosts] = useState<any[]>([]);
 
   useEffect(() => {
@@ -60,6 +62,9 @@ export const Profile = ({ user }: ProfileProps) => {
         setStats(data);
         setNewBio(data.bio || "");
         setNewAvatar(data.avatar_url || "");
+        if (data.skills) {
+          try { setSkills(JSON.parse(data.skills)); } catch (e) {}
+        }
       });
 
     fetch(`/api/users/${user.id}/posts`)
@@ -79,6 +84,31 @@ export const Profile = ({ user }: ProfileProps) => {
     };
   }, [user.id]);
 
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewAvatar(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddSkill = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && newSkill.trim()) {
+      e.preventDefault();
+      if (!skills.includes(newSkill.trim())) {
+        setSkills([...skills, newSkill.trim()]);
+      }
+      setNewSkill("");
+    }
+  };
+
+  const handleRemoveSkill = (skillToRemove: string) => {
+    setSkills(skills.filter(s => s !== skillToRemove));
+  };
+
   const handleUpdateProfile = async () => {
     const token = localStorage.getItem("iea_token");
     try {
@@ -92,7 +122,8 @@ export const Profile = ({ user }: ProfileProps) => {
           name: newName, 
           bio: newBio, 
           avatar_url: newAvatar,
-          card_theme: cardTheme
+          card_theme: cardTheme,
+          skills: JSON.stringify(skills)
         }),
       });
       
@@ -233,12 +264,35 @@ export const Profile = ({ user }: ProfileProps) => {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[9px] font-black uppercase tracking-widest opacity-30 ml-1">Avatar URL</label>
+                <label className="text-[9px] font-black uppercase tracking-widest opacity-30 ml-1">Avatar</label>
+                <div className="flex gap-3 items-center">
+                  <div className="w-12 h-12 rounded-xl bg-zinc-100 overflow-hidden flex-shrink-0">
+                    {newAvatar ? <img src={newAvatar} alt="Avatar" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-black/20"><UserCheck size={20} /></div>}
+                  </div>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    className="w-full text-[10px] font-bold file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-black file:uppercase file:tracking-widest file:bg-black file:text-white hover:file:bg-zinc-800 transition-all cursor-pointer"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black uppercase tracking-widest opacity-30 ml-1">Skills</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {skills.map(skill => (
+                    <span key={skill} className="bg-black text-white px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                      {skill}
+                      <button onClick={() => handleRemoveSkill(skill)} className="hover:text-red-400"><Check size={12} /></button>
+                    </span>
+                  ))}
+                </div>
                 <input 
-                  value={newAvatar} 
-                  onChange={(e) => setNewAvatar(e.target.value)}
+                  value={newSkill} 
+                  onChange={(e) => setNewSkill(e.target.value)}
+                  onKeyDown={handleAddSkill}
                   className="w-full bg-zinc-50 border-none rounded-2xl px-5 py-4 text-sm focus:ring-2 focus:ring-black transition-all"
-                  placeholder="https://example.com/avatar.jpg"
+                  placeholder="Type a skill and press Enter"
                 />
               </div>
             </div>
@@ -262,6 +316,18 @@ export const Profile = ({ user }: ProfileProps) => {
             {user.bio && (
               <div className="bg-zinc-50 p-6 rounded-[2rem] border border-black/5">
                 <p className="text-sm leading-relaxed text-black/60 font-medium italic">"{user.bio}"</p>
+              </div>
+            )}
+            {skills.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-30 ml-1">Verified Skills</p>
+                <div className="flex flex-wrap gap-2">
+                  {skills.map(skill => (
+                    <span key={skill} className="bg-black/5 text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-black/5">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
             <div className="flex gap-3">

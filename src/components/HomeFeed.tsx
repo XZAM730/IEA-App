@@ -23,6 +23,7 @@ export const HomeFeed = ({ user }: { user: any }) => {
   const { showToast } = useToast();
   const [posts, setPosts] = useState<any[]>([]);
   const [newPostContent, setNewPostContent] = useState("");
+  const [newPostMedia, setNewPostMedia] = useState<{ url: string, type: string } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [activeComments, setActiveComments] = useState<string | null>(null);
   const [comments, setComments] = useState<{ [key: string]: any[] }>({});
@@ -72,11 +73,31 @@ export const HomeFeed = ({ user }: { user: any }) => {
     };
   }, []);
 
+  const handleMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewPostMedia({
+          url: reader.result as string,
+          type: file.type.startsWith('image/') ? 'image' : 'video'
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleCreatePost = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPostContent.trim()) return;
-    socket.emit("post:create", { userId: user.id, content: newPostContent });
+    if (!newPostContent.trim() && !newPostMedia) return;
+    socket.emit("post:create", { 
+      userId: user.id, 
+      content: newPostContent,
+      media_url: newPostMedia?.url,
+      media_type: newPostMedia?.type
+    });
     setNewPostContent("");
+    setNewPostMedia(null);
     setShowCreate(false);
     showToast("Broadcast Transmitted", "success");
   };
@@ -178,7 +199,7 @@ export const HomeFeed = ({ user }: { user: any }) => {
               className="w-full bg-transparent border-none focus:ring-0 text-sm font-medium resize-none min-h-[100px]"
             />
             <div className="flex justify-between items-center pt-2">
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <button 
                   type="button" 
                   onClick={() => {
@@ -207,11 +228,38 @@ export const HomeFeed = ({ user }: { user: any }) => {
                 >
                   <Share2 size={16} className="opacity-30" />
                 </button>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={handleMediaUpload}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <button type="button" className="p-2 hover:bg-black/5 rounded-xl transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-30"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                  </button>
+                </div>
               </div>
               <button type="submit" className="bg-black text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 transition-all">
                 Broadcast
               </button>
             </div>
+            {newPostMedia && (
+              <div className="relative mt-4 rounded-2xl overflow-hidden bg-black/5 border border-black/10">
+                {newPostMedia.type === 'image' ? (
+                  <img src={newPostMedia.url} alt="Upload preview" className="w-full max-h-64 object-cover" />
+                ) : (
+                  <video src={newPostMedia.url} controls className="w-full max-h-64 object-cover" />
+                )}
+                <button 
+                  type="button" 
+                  onClick={() => setNewPostMedia(null)}
+                  className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full hover:bg-black transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )}
           </motion.form>
         )}
       </AnimatePresence>
@@ -277,7 +325,7 @@ export const HomeFeed = ({ user }: { user: any }) => {
                 )}
               </div>
 
-              <div className="bg-zinc-50 p-6 rounded-[2.5rem] border border-black/5 hover:border-black/10 transition-colors shadow-sm">
+              <div className="bg-zinc-50 p-6 rounded-[2.5rem] border border-black/5 hover:border-black/10 transition-colors shadow-sm space-y-4">
                 {editingPostId === post.id ? (
                   <form onSubmit={handleUpdate} className="space-y-3">
                     <textarea
@@ -292,7 +340,18 @@ export const HomeFeed = ({ user }: { user: any }) => {
                     </div>
                   </form>
                 ) : (
-                  <p className="text-sm font-medium text-black/80 leading-relaxed">{post.content}</p>
+                  <>
+                    <p className="text-sm font-medium text-black/80 leading-relaxed">{post.content}</p>
+                    {post.media_url && (
+                      <div className="rounded-2xl overflow-hidden bg-black/5 border border-black/10">
+                        {post.media_type === 'image' ? (
+                          <img src={post.media_url} alt="Post media" className="w-full max-h-96 object-cover" />
+                        ) : (
+                          <video src={post.media_url} controls className="w-full max-h-96 object-cover" />
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

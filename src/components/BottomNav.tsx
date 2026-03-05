@@ -1,4 +1,4 @@
-import { Home, Newspaper, MessageSquare, User, Settings, Users } from "lucide-react";
+import { Home, Newspaper, MessageSquare, User, Settings, Users, Radio } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/src/lib/utils";
 import { motion } from "motion/react";
@@ -7,6 +7,7 @@ const navItems = [
   { icon: Home, label: "Home", path: "/" },
   { icon: Newspaper, label: "News", path: "/news" },
   { icon: Users, label: "Hub", path: "/hub" },
+  { icon: Radio, label: "Live", path: "/live" },
   { icon: MessageSquare, label: "Chat", path: "/chat" },
   { icon: User, label: "Profile", path: "/profile" },
 ];

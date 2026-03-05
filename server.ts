@@ -22,7 +22,8 @@ async function startServer() {
     cors: { origin: "*" }
   });
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Health Check
   app.get("/api/health", (req, res) => {
@@ -52,6 +53,91 @@ async function startServer() {
   });
 
   // --- API Routes ---
+
+  // Auth: Google OAuth URL
+  app.get("/api/auth/google/url", (req, res) => {
+    const redirectUri = `${req.protocol}://${req.get('host')}/auth/callback`;
+    const params = new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID || '',
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'email profile',
+      access_type: 'offline',
+      prompt: 'consent'
+    });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+    res.json({ url: authUrl });
+  });
+
+  // Auth: Google Callback
+  app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
+    const { code } = req.query;
+    if (!code) {
+      return res.status(400).send("No code provided");
+    }
+
+    try {
+      const redirectUri = `${req.protocol}://${req.get('host')}/auth/callback`;
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code: code as string,
+          client_id: process.env.GOOGLE_CLIENT_ID || '',
+          client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code'
+        })
+      });
+      const tokenData = await tokenRes.json();
+      
+      if (!tokenData.access_token) {
+        throw new Error("Failed to get access token");
+      }
+
+      const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` }
+      });
+      const userData = await userRes.json();
+
+      let user = db.prepare('SELECT id FROM users WHERE google_id = ? OR LOWER(email) = ?').get(userData.id, userData.email?.toLowerCase()) as any;
+      
+      let userId;
+      if (!user) {
+        userId = uuidv4();
+        const idNumber = `IEA-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
+        const joinedDate = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+        
+        db.prepare('INSERT INTO users (id, name, email, password, id_number, joined_date, google_id, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+          userId, userData.name, userData.email?.toLowerCase(), '', idNumber, joinedDate, userData.id, userData.picture
+        );
+      } else {
+        userId = user.id;
+        db.prepare('UPDATE users SET google_id = ?, avatar_url = ? WHERE id = ?').run(userData.id, userData.picture, userId);
+      }
+
+      const token = jwt.sign({ id: userId }, JWT_SECRET);
+
+      res.send(`
+        <html>
+          <body>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token: '${token}' }, '*');
+                window.close();
+              } else {
+                window.location.href = '/';
+              }
+            </script>
+            <p>Authentication successful. This window should close automatically.</p>
+          </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("OAuth error:", error);
+      res.status(500).send("Authentication failed");
+    }
+  });
 
   // Auth: Register
   app.post("/api/auth/register", async (req, res) => {
@@ -89,7 +175,7 @@ async function startServer() {
     const token = authHeader.split(" ")[1];
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio FROM users WHERE id = ?').get(decoded.id) as any;
+      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(decoded.id) as any;
       if (!user) return res.status(404).json({ error: "User not found" });
       res.json({ user });
     } catch (e) {
@@ -125,7 +211,8 @@ async function startServer() {
         is_verified: user.is_verified,
         card_theme: user.card_theme,
         avatar_url: user.avatar_url,
-        bio: user.bio
+        bio: user.bio,
+        skills: user.skills
       } });
     } catch (error: any) {
       console.error("Login error:", error);
@@ -173,10 +260,41 @@ async function startServer() {
     res.json(users);
   });
 
+  // Users: Get all
+  app.get("/api/users", (req, res) => {
+    const users = db.prepare('SELECT id, name, id_number, avatar_url FROM users').all();
+    res.json(users);
+  });
+
+  // Messages: Get conversation
+  app.get("/api/messages/:userId", (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      const myId = decoded.id;
+      const otherId = req.params.userId;
+      
+      const messages = db.prepare(`
+        SELECT m.*, u.name as senderName, u.avatar_url as senderAvatar 
+        FROM messages m 
+        JOIN users u ON m.sender_id = u.id 
+        WHERE (m.sender_id = ? AND m.receiver_id = ?) 
+           OR (m.sender_id = ? AND m.receiver_id = ?)
+        ORDER BY m.timestamp ASC
+      `).all(myId, otherId, otherId, myId);
+      
+      res.json(messages);
+    } catch (e) {
+      res.status(401).json({ error: "Invalid token" });
+    }
+  });
+
   // Profile: Get stats
   app.get("/api/users/:id/stats", (req, res) => {
     const { id } = req.params;
-    const user = db.prepare('SELECT name, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio FROM users WHERE id = ?').get(id) as any;
+    const user = db.prepare('SELECT name, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(id) as any;
     if (!user) return res.status(404).json({ error: "User not found" });
     
     const posts = db.prepare('SELECT COUNT(*) as count FROM posts WHERE user_id = ?').get(id) as any;
@@ -192,12 +310,12 @@ async function startServer() {
     const token = authHeader.split(" ")[1];
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const { name, bio, avatar_url, card_theme } = req.body;
+      const { name, bio, avatar_url, card_theme, skills } = req.body;
       
-      db.prepare('UPDATE users SET name = ?, bio = ?, avatar_url = ?, card_theme = ? WHERE id = ?')
-        .run(name, bio, avatar_url, card_theme, decoded.id);
+      db.prepare('UPDATE users SET name = ?, bio = ?, avatar_url = ?, card_theme = ?, skills = ? WHERE id = ?')
+        .run(name, bio, avatar_url, card_theme, skills, decoded.id);
       
-      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio FROM users WHERE id = ?').get(decoded.id) as any;
+      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(decoded.id) as any;
       res.json({ user });
     } catch (e) {
       res.status(401).json({ error: "Invalid token" });
@@ -342,9 +460,9 @@ async function startServer() {
     });
 
     socket.on("post:create", (data) => {
-      const { userId, content } = data;
+      const { userId, content, media_url, media_type } = data;
       const id = uuidv4();
-      db.prepare('INSERT INTO posts (id, user_id, content) VALUES (?, ?, ?)').run(id, userId, content);
+      db.prepare('INSERT INTO posts (id, user_id, content, media_url, media_type) VALUES (?, ?, ?, ?, ?)').run(id, userId, content, media_url || null, media_type || null);
       
       const post = db.prepare(`
         SELECT p.*, u.name as author, u.avatar_url as authorAvatar, 0 as likes, 0 as comments 
@@ -436,9 +554,9 @@ async function startServer() {
     });
 
     socket.on("message:send", (data) => {
-      const { senderId, receiverId, text } = data;
+      const { senderId, receiverId, text, media_url, media_type } = data;
       const id = uuidv4();
-      db.prepare('INSERT INTO messages (id, sender_id, receiver_id, text) VALUES (?, ?, ?, ?)').run(id, senderId, receiverId, text);
+      db.prepare('INSERT INTO messages (id, sender_id, receiver_id, text, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?)').run(id, senderId, receiverId, text, media_url || null, media_type || null);
       
       const sender = db.prepare('SELECT name, avatar_url FROM users WHERE id = ?').get(senderId) as any;
       const msg = { 
@@ -446,11 +564,27 @@ async function startServer() {
         senderId, 
         receiverId, 
         text, 
+        media_url,
+        media_type,
         senderName: sender?.name,
         senderAvatar: sender?.avatar_url,
         timestamp: new Date().toISOString() 
       };
       io.emit("message:new", msg);
+    });
+
+    socket.on("live:start", (data) => {
+      // Broadcast that a user started a live stream
+      io.emit("live:started", data);
+      io.emit("live:viewers", 1); // Mock viewers
+    });
+
+    socket.on("live:end", (data) => {
+      io.emit("live:ended", data);
+    });
+
+    socket.on("live:message_send", (data) => {
+      io.emit("live:message", data);
     });
 
     socket.on("disconnect", () => {

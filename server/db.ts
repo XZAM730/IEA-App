@@ -38,6 +38,8 @@ db.exec(`
 const tableInfo = db.prepare("PRAGMA table_info(users)").all() as any[];
 const hasAvatarUrl = tableInfo.some(col => col.name === 'avatar_url');
 const hasBio = tableInfo.some(col => col.name === 'bio');
+const hasSkills = tableInfo.some(col => col.name === 'skills');
+const hasGoogleId = tableInfo.some(col => col.name === 'google_id');
 
 if (!hasAvatarUrl) {
   db.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT");
@@ -45,32 +47,68 @@ if (!hasAvatarUrl) {
 if (!hasBio) {
   db.exec("ALTER TABLE users ADD COLUMN bio TEXT");
 }
+if (!hasSkills) {
+  db.exec("ALTER TABLE users ADD COLUMN skills TEXT");
+}
+if (!hasGoogleId) {
+  db.exec("ALTER TABLE users ADD COLUMN google_id TEXT");
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS posts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     content TEXT NOT NULL,
+    media_url TEXT,
+    media_type TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
+`);
 
+const postsTableInfo = db.prepare("PRAGMA table_info(posts)").all() as any[];
+const hasMediaUrl = postsTableInfo.some(col => col.name === 'media_url');
+const hasMediaType = postsTableInfo.some(col => col.name === 'media_type');
+
+if (!hasMediaUrl) {
+  db.exec("ALTER TABLE posts ADD COLUMN media_url TEXT");
+}
+if (!hasMediaType) {
+  db.exec("ALTER TABLE posts ADD COLUMN media_type TEXT");
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    sender_id TEXT NOT NULL,
+    receiver_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    media_url TEXT,
+    media_type TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(sender_id) REFERENCES users(id),
+    FOREIGN KEY(receiver_id) REFERENCES users(id)
+  );
+`);
+
+const messagesTableInfo = db.prepare("PRAGMA table_info(messages)").all() as any[];
+const hasMessageMediaUrl = messagesTableInfo.some(col => col.name === 'media_url');
+const hasMessageMediaType = messagesTableInfo.some(col => col.name === 'media_type');
+
+if (!hasMessageMediaUrl) {
+  db.exec("ALTER TABLE messages ADD COLUMN media_url TEXT");
+}
+if (!hasMessageMediaType) {
+  db.exec("ALTER TABLE messages ADD COLUMN media_type TEXT");
+}
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS likes (
     user_id TEXT NOT NULL,
     post_id TEXT NOT NULL,
     PRIMARY KEY(user_id, post_id),
     FOREIGN KEY(user_id) REFERENCES users(id),
     FOREIGN KEY(post_id) REFERENCES posts(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    sender_id TEXT NOT NULL,
-    receiver_id TEXT NOT NULL,
-    text TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(sender_id) REFERENCES users(id),
-    FOREIGN KEY(receiver_id) REFERENCES users(id)
   );
 
   CREATE TABLE IF NOT EXISTS comments (

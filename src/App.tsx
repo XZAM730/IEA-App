@@ -10,6 +10,7 @@ import { Settings } from "./components/Settings";
 import { CommunityHub } from "./components/CommunityHub";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { GlobalSearch } from "./components/GlobalSearch";
+import { Live } from "./components/Live";
 import { Bell, Search as SearchIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useToast } from "./components/Toast";
@@ -177,6 +178,7 @@ export default function App() {
                 <Route path="/" element={<HomeFeed user={user} />} />
                 <Route path="/news" element={<News user={user} />} />
                 <Route path="/chat" element={<Chat user={user} />} />
+                <Route path="/live" element={<Live user={user} />} />
                 <Route path="/profile" element={<Profile user={user} />} />
                 <Route path="/hub" element={<CommunityHub user={user} />} />
                 <Route path="/settings" element={<Settings user={user} />} />
