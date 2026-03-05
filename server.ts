@@ -26,7 +26,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Health Check
-  app.get("/api/health", (req, res) => {
+  app.get("/api/health", async (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
@@ -34,28 +34,28 @@ async function startServer() {
   const onlineUsers = new Set<string>();
 
   // Communities: Search
-  app.get("/api/communities/search", (req, res) => {
+  app.get("/api/communities/search", async (req, res) => {
     const { q } = req.query;
-    const communities = db.prepare('SELECT * FROM communities WHERE name LIKE ? OR description LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
+    const communities = await db.prepare('SELECT * FROM communities WHERE name LIKE ? OR description LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
     res.json(communities);
   });
 
   // News: Search
-  app.get("/api/news/search", (req, res) => {
+  app.get("/api/news/search", async (req, res) => {
     const { q } = req.query;
-    const news = db.prepare('SELECT * FROM news WHERE title LIKE ? OR summary LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
+    const news = await db.prepare('SELECT * FROM news WHERE title LIKE ? OR summary LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
     res.json(news);
   });
 
   // Online Status: Get
-  app.get("/api/users/online", (req, res) => {
+  app.get("/api/users/online", async (req, res) => {
     res.json({ onlineCount: onlineUsers.size, onlineIds: Array.from(onlineUsers) });
   });
 
   // --- API Routes ---
 
   // Auth: Google OAuth URL
-  app.get("/api/auth/google/url", (req, res) => {
+  app.get("/api/auth/google/url", async (req, res) => {
     const redirectUri = `${req.protocol}://${req.get('host')}/auth/callback`;
     const params = new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID || '',
@@ -100,7 +100,7 @@ async function startServer() {
       });
       const userData = await userRes.json();
 
-      let user = db.prepare('SELECT id FROM users WHERE google_id = ? OR LOWER(email) = ?').get(userData.id, userData.email?.toLowerCase()) as any;
+      let user = await db.prepare('SELECT id FROM users WHERE google_id = ? OR LOWER(email) = ?').get(userData.id, userData.email?.toLowerCase()) as any;
       
       let userId;
       if (!user) {
@@ -108,12 +108,12 @@ async function startServer() {
         const idNumber = `IEA-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
         const joinedDate = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
         
-        db.prepare('INSERT INTO users (id, name, email, password, id_number, joined_date, google_id, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+        await db.prepare('INSERT INTO users (id, name, email, password, id_number, joined_date, google_id, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
           userId, userData.name, userData.email?.toLowerCase(), '', idNumber, joinedDate, userData.id, userData.picture
         );
       } else {
         userId = user.id;
-        db.prepare('UPDATE users SET google_id = ?, avatar_url = ? WHERE id = ?').run(userData.id, userData.picture, userId);
+        await db.prepare('UPDATE users SET google_id = ?, avatar_url = ? WHERE id = ?').run(userData.id, userData.picture, userId);
       }
 
       const token = jwt.sign({ id: userId }, JWT_SECRET);
@@ -146,7 +146,7 @@ async function startServer() {
     
     try {
       // Check if user already exists
-      const existing = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(normalizedEmail);
+      const existing = await db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(normalizedEmail);
       if (existing) {
         return res.status(400).json({ error: "Email already registered" });
       }
@@ -156,7 +156,7 @@ async function startServer() {
       const idNumber = `IEA-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
       const joinedDate = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
       
-      db.prepare('INSERT INTO users (id, name, email, password, id_number, joined_date) VALUES (?, ?, ?, ?, ?, ?)').run(
+      await db.prepare('INSERT INTO users (id, name, email, password, id_number, joined_date) VALUES (?, ?, ?, ?, ?, ?)').run(
         id, name, normalizedEmail, hashedPassword, idNumber, joinedDate
       );
       
@@ -169,13 +169,13 @@ async function startServer() {
   });
 
   // Auth: Me
-  app.get("/api/auth/me", (req, res) => {
+  app.get("/api/auth/me", async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
     const token = authHeader.split(" ")[1];
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(decoded.id) as any;
+      const user = await db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(decoded.id) as any;
       if (!user) return res.status(404).json({ error: "User not found" });
       res.json({ user });
     } catch (e) {
@@ -189,7 +189,7 @@ async function startServer() {
     const normalizedEmail = email?.trim().toLowerCase();
     
     try {
-      const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(normalizedEmail) as any;
+      const user = await db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(normalizedEmail) as any;
       if (!user) {
         console.log(`Login failed: User not found for email ${normalizedEmail}`);
         return res.status(401).json({ error: "Invalid credentials" });
@@ -221,8 +221,8 @@ async function startServer() {
   });
 
   // Posts: Get for user
-  app.get("/api/users/:userId/posts", (req, res) => {
-    const posts = db.prepare(`
+  app.get("/api/users/:userId/posts", async (req, res) => {
+    const posts = await db.prepare(`
       SELECT p.*, u.name as author, u.avatar_url as authorAvatar,
       (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes,
       (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments
@@ -235,8 +235,8 @@ async function startServer() {
   });
 
   // Posts: Get all
-  app.get("/api/posts", (req, res) => {
-    const posts = db.prepare(`
+  app.get("/api/posts", async (req, res) => {
+    const posts = await db.prepare(`
       SELECT p.*, u.name as author, u.avatar_url as authorAvatar,
       (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes,
       (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments
@@ -248,26 +248,26 @@ async function startServer() {
   });
 
   // News: Get all
-  app.get("/api/news", (req, res) => {
-    const news = db.prepare('SELECT * FROM news ORDER BY timestamp DESC').all();
+  app.get("/api/news", async (req, res) => {
+    const news = await db.prepare('SELECT * FROM news ORDER BY timestamp DESC').all();
     res.json(news);
   });
 
   // Users: Search
-  app.get("/api/users/search", (req, res) => {
+  app.get("/api/users/search", async (req, res) => {
     const { q } = req.query;
-    const users = db.prepare('SELECT id, name, id_number, avatar_url FROM users WHERE name LIKE ? OR id_number LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
+    const users = await db.prepare('SELECT id, name, id_number, avatar_url FROM users WHERE name LIKE ? OR id_number LIKE ? LIMIT 10').all(`%${q}%`, `%${q}%`);
     res.json(users);
   });
 
   // Users: Get all
-  app.get("/api/users", (req, res) => {
-    const users = db.prepare('SELECT id, name, id_number, avatar_url FROM users').all();
+  app.get("/api/users", async (req, res) => {
+    const users = await db.prepare('SELECT id, name, id_number, avatar_url FROM users').all();
     res.json(users);
   });
 
   // Messages: Get conversation
-  app.get("/api/messages/:userId", (req, res) => {
+  app.get("/api/messages/:userId", async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
     const token = authHeader.split(" ")[1];
@@ -276,7 +276,7 @@ async function startServer() {
       const myId = decoded.id;
       const otherId = req.params.userId;
       
-      const messages = db.prepare(`
+      const messages = await db.prepare(`
         SELECT m.*, u.name as senderName, u.avatar_url as senderAvatar 
         FROM messages m 
         JOIN users u ON m.sender_id = u.id 
@@ -292,19 +292,19 @@ async function startServer() {
   });
 
   // Profile: Get stats
-  app.get("/api/users/:id/stats", (req, res) => {
+  app.get("/api/users/:id/stats", async (req, res) => {
     const { id } = req.params;
-    const user = db.prepare('SELECT name, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(id) as any;
+    const user = await db.prepare('SELECT name, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(id) as any;
     if (!user) return res.status(404).json({ error: "User not found" });
     
-    const posts = db.prepare('SELECT COUNT(*) as count FROM posts WHERE user_id = ?').get(id) as any;
-    const followers = db.prepare('SELECT COUNT(*) as count FROM follows WHERE following_id = ?').get(id) as any;
-    const following = db.prepare('SELECT COUNT(*) as count FROM follows WHERE follower_id = ?').get(id) as any;
+    const posts = await db.prepare('SELECT COUNT(*) as count FROM posts WHERE user_id = ?').get(id) as any;
+    const followers = await db.prepare('SELECT COUNT(*) as count FROM follows WHERE following_id = ?').get(id) as any;
+    const following = await db.prepare('SELECT COUNT(*) as count FROM follows WHERE follower_id = ?').get(id) as any;
     res.json({ ...user, posts: posts.count, followers: followers.count, following: following.count });
   });
 
   // Profile: Update
-  app.put("/api/users/profile", (req, res) => {
+  app.put("/api/users/profile", async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ error: "Unauthorized" });
     const token = authHeader.split(" ")[1];
@@ -312,10 +312,10 @@ async function startServer() {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
       const { name, bio, avatar_url, card_theme, skills } = req.body;
       
-      db.prepare('UPDATE users SET name = ?, bio = ?, avatar_url = ?, card_theme = ?, skills = ? WHERE id = ?')
+      await db.prepare('UPDATE users SET name = ?, bio = ?, avatar_url = ?, card_theme = ?, skills = ? WHERE id = ?')
         .run(name, bio, avatar_url, card_theme, skills, decoded.id);
       
-      const user = db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(decoded.id) as any;
+      const user = await db.prepare('SELECT id, name, email, id_number as idNumber, joined_date as joinedDate, is_verified, card_theme, avatar_url, bio, skills FROM users WHERE id = ?').get(decoded.id) as any;
       res.json({ user });
     } catch (e) {
       res.status(401).json({ error: "Invalid token" });
@@ -323,8 +323,8 @@ async function startServer() {
   });
 
   // Comments: Get for post
-  app.get("/api/posts/:postId/comments", (req, res) => {
-    const comments = db.prepare(`
+  app.get("/api/posts/:postId/comments", async (req, res) => {
+    const comments = await db.prepare(`
       SELECT c.*, u.name as author 
       FROM comments c JOIN users u ON c.user_id = u.id 
       WHERE c.post_id = ? ORDER BY c.timestamp ASC
@@ -333,16 +333,16 @@ async function startServer() {
   });
 
   // Bookmarks: Get for user
-  app.get("/api/users/:userId/bookmarks", (req, res) => {
-    const bookmarks = db.prepare(`
+  app.get("/api/users/:userId/bookmarks", async (req, res) => {
+    const bookmarks = await db.prepare(`
       SELECT n.* FROM news n JOIN bookmarks b ON n.id = b.news_id WHERE b.user_id = ?
     `).all(req.params.userId);
     res.json(bookmarks);
   });
 
   // Notifications: Get for user
-  app.get("/api/notifications/:userId", (req, res) => {
-    const notifications = db.prepare(`
+  app.get("/api/notifications/:userId", async (req, res) => {
+    const notifications = await db.prepare(`
       SELECT n.*, u.name as from_name, u.avatar_url as from_avatar_url
       FROM notifications n JOIN users u ON n.from_user_id = u.id 
       WHERE n.user_id = ? ORDER BY n.timestamp DESC LIMIT 20
@@ -351,27 +351,27 @@ async function startServer() {
   });
 
   // Notifications: Mark as read
-  app.post("/api/notifications/:userId/read", (req, res) => {
-    db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(req.params.userId);
+  app.post("/api/notifications/:userId/read", async (req, res) => {
+    await db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(req.params.userId);
     res.json({ success: true });
   });
 
   // Users: Update theme
-  app.post("/api/users/:id/theme", (req, res) => {
+  app.post("/api/users/:id/theme", async (req, res) => {
     const { theme } = req.body;
-    db.prepare('UPDATE users SET card_theme = ? WHERE id = ?').run(theme, req.params.id);
+    await db.prepare('UPDATE users SET card_theme = ? WHERE id = ?').run(theme, req.params.id);
     res.json({ success: true });
   });
 
   // Communities: Get all
-  app.get("/api/communities", (req, res) => {
-    const communities = db.prepare('SELECT * FROM communities').all();
+  app.get("/api/communities", async (req, res) => {
+    const communities = await db.prepare('SELECT * FROM communities').all();
     res.json(communities);
   });
 
   // Communities: Get members
-  app.get("/api/communities/:id/members", (req, res) => {
-    const members = db.prepare(`
+  app.get("/api/communities/:id/members", async (req, res) => {
+    const members = await db.prepare(`
       SELECT u.id, u.name, u.id_number FROM users u 
       JOIN community_members cm ON u.id = cm.user_id 
       WHERE cm.community_id = ?
@@ -380,10 +380,10 @@ async function startServer() {
   });
 
   // Users: Update verified status
-  app.post("/api/users/:id/verify", (req, res) => {
+  app.post("/api/users/:id/verify", async (req, res) => {
     const { isVerified } = req.body;
-    db.prepare('UPDATE users SET is_verified = ? WHERE id = ?').run(isVerified ? 1 : 0, req.params.id);
-    const user = db.prepare('SELECT id, name, id_number, joined_date, is_verified, card_theme FROM users WHERE id = ?').get(req.params.id);
+    await db.prepare('UPDATE users SET is_verified = ? WHERE id = ?').run(isVerified ? 1 : 0, req.params.id);
+    const user = await db.prepare('SELECT id, name, id_number, joined_date, is_verified, card_theme FROM users WHERE id = ?').get(req.params.id);
     io.emit("user:profile_updated", user);
     res.json({ success: true });
   });
@@ -398,7 +398,7 @@ async function startServer() {
       io.emit("user:status_change", { userId, status: "online", onlineCount: onlineUsers.size });
     });
 
-    socket.on("chat:typing", (data) => {
+    socket.on("chat:typing", async (data) => {
       const { userId, isTyping } = data;
       socket.broadcast.emit("chat:typing_update", { userId, isTyping });
     });
@@ -406,50 +406,50 @@ async function startServer() {
     console.log("User connected:", socket.id);
 
     // News: Admin push (simulated)
-    socket.on("news:create", (data) => {
+    socket.on("news:create", async (data) => {
       const { title, summary, category } = data;
       const id = uuidv4();
-      db.prepare('INSERT INTO news (id, title, summary, category) VALUES (?, ?, ?, ?)').run(id, title, summary, category);
-      const newsItem = db.prepare('SELECT * FROM news WHERE id = ?').get(id);
+      await db.prepare('INSERT INTO news (id, title, summary, category) VALUES (?, ?, ?, ?)').run(id, title, summary, category);
+      const newsItem = await db.prepare('SELECT * FROM news WHERE id = ?').get(id);
       io.emit("news:new", newsItem);
     });
 
-    socket.on("community:join", (data) => {
+    socket.on("community:join", async (data) => {
       const { userId, communityId } = data;
       try {
-        db.prepare('INSERT INTO community_members (community_id, user_id) VALUES (?, ?)').run(communityId, userId);
-        db.prepare('UPDATE communities SET member_count = member_count + 1 WHERE id = ?').run(communityId);
-        const community = db.prepare('SELECT * FROM communities WHERE id = ?').get(communityId);
+        await db.prepare('INSERT INTO community_members (community_id, user_id) VALUES (?, ?)').run(communityId, userId);
+        await db.prepare('UPDATE communities SET member_count = member_count + 1 WHERE id = ?').run(communityId);
+        const community = await db.prepare('SELECT * FROM communities WHERE id = ?').get(communityId);
         io.emit("community:update", community);
       } catch (e) {
         // Already a member
       }
     });
 
-    socket.on("user:update_profile", (data) => {
+    socket.on("user:update_profile", async (data) => {
       const { userId, name } = data;
-      db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, userId);
-      const user = db.prepare('SELECT id, name, id_number, joined_date, is_verified, card_theme FROM users WHERE id = ?').get(userId);
+      await db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, userId);
+      const user = await db.prepare('SELECT id, name, id_number, joined_date, is_verified, card_theme FROM users WHERE id = ?').get(userId);
       io.emit("user:profile_updated", user);
     });
 
-    socket.on("post:delete", (data) => {
+    socket.on("post:delete", async (data) => {
       const { userId, postId } = data;
-      const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
+      const post = await db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
       if (post && post.user_id === userId) {
-        db.prepare('DELETE FROM likes WHERE post_id = ?').run(postId);
-        db.prepare('DELETE FROM comments WHERE post_id = ?').run(postId);
-        db.prepare('DELETE FROM posts WHERE id = ?').run(postId);
+        await db.prepare('DELETE FROM likes WHERE post_id = ?').run(postId);
+        await db.prepare('DELETE FROM comments WHERE post_id = ?').run(postId);
+        await db.prepare('DELETE FROM posts WHERE id = ?').run(postId);
         io.emit("post:deleted", postId);
       }
     });
 
-    socket.on("post:update", (data) => {
+    socket.on("post:update", async (data) => {
       const { userId, postId, content } = data;
-      const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
+      const post = await db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
       if (post && post.user_id === userId) {
-        db.prepare('UPDATE posts SET content = ? WHERE id = ?').run(content, postId);
-        const updatedPost = db.prepare(`
+        await db.prepare('UPDATE posts SET content = ? WHERE id = ?').run(content, postId);
+        const updatedPost = await db.prepare(`
           SELECT p.*, u.name as author, 
           (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as likes,
           (SELECT COUNT(*) FROM comments WHERE post_id = p.id) as comments
@@ -459,12 +459,12 @@ async function startServer() {
       }
     });
 
-    socket.on("post:create", (data) => {
+    socket.on("post:create", async (data) => {
       const { userId, content, media_url, media_type } = data;
       const id = uuidv4();
-      db.prepare('INSERT INTO posts (id, user_id, content, media_url, media_type) VALUES (?, ?, ?, ?, ?)').run(id, userId, content, media_url || null, media_type || null);
+      await db.prepare('INSERT INTO posts (id, user_id, content, media_url, media_type) VALUES (?, ?, ?, ?, ?)').run(id, userId, content, media_url || null, media_type || null);
       
-      const post = db.prepare(`
+      const post = await db.prepare(`
         SELECT p.*, u.name as author, u.avatar_url as authorAvatar, 0 as likes, 0 as comments 
         FROM posts p JOIN users u ON p.user_id = u.id 
         WHERE p.id = ?
@@ -473,18 +473,18 @@ async function startServer() {
       io.emit("post:new", post);
     });
 
-    socket.on("post:like", (data) => {
+    socket.on("post:like", async (data) => {
       const { userId, postId } = data;
-      const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
+      const post = await db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
       
       try {
         const notifId = uuidv4();
-        db.prepare('INSERT INTO likes (user_id, post_id) VALUES (?, ?)').run(userId, postId);
+        await db.prepare('INSERT INTO likes (user_id, post_id) VALUES (?, ?)').run(userId, postId);
         if (post && post.user_id !== userId) {
-          db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type, post_id) VALUES (?, ?, ?, ?, ?)').run(
+          await db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type, post_id) VALUES (?, ?, ?, ?, ?)').run(
             notifId, post.user_id, userId, 'like', postId
           );
-          const notif = db.prepare(`
+          const notif = await db.prepare(`
             SELECT n.*, u.name as from_name, u.avatar_url as from_avatar_url
             FROM notifications n JOIN users u ON n.from_user_id = u.id 
             WHERE n.id = ?
@@ -492,28 +492,28 @@ async function startServer() {
           io.emit("notification:new", notif);
         }
       } catch (e) {
-        db.prepare('DELETE FROM likes WHERE user_id = ? AND post_id = ?').run(userId, postId);
+        await db.prepare('DELETE FROM likes WHERE user_id = ? AND post_id = ?').run(userId, postId);
       }
-      const likes = db.prepare('SELECT COUNT(*) as count FROM likes WHERE post_id = ?').get(postId) as any;
+      const likes = await db.prepare('SELECT COUNT(*) as count FROM likes WHERE post_id = ?').get(postId) as any;
       io.emit("post:like_update", { postId, likes: likes.count });
     });
 
-    socket.on("post:comment", (data) => {
+    socket.on("post:comment", async (data) => {
       const { userId, postId, content } = data;
       const id = uuidv4();
-      db.prepare('INSERT INTO comments (id, post_id, user_id, content) VALUES (?, ?, ?, ?)').run(id, postId, userId, content);
+      await db.prepare('INSERT INTO comments (id, post_id, user_id, content) VALUES (?, ?, ?, ?)').run(id, postId, userId, content);
       
-      const comment = db.prepare(`
+      const comment = await db.prepare(`
         SELECT c.*, u.name as author FROM comments c JOIN users u ON c.user_id = u.id WHERE c.id = ?
       `).get(id);
       
-      const post = db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
+      const post = await db.prepare('SELECT user_id FROM posts WHERE id = ?').get(postId) as any;
       if (post && post.user_id !== userId) {
         const notifId = uuidv4();
-        db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type, post_id) VALUES (?, ?, ?, ?, ?)').run(
+        await db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type, post_id) VALUES (?, ?, ?, ?, ?)').run(
           notifId, post.user_id, userId, 'comment', postId
         );
-        const notif = db.prepare(`
+        const notif = await db.prepare(`
           SELECT n.*, u.name as from_name, u.avatar_url as from_avatar_url
           FROM notifications n JOIN users u ON n.from_user_id = u.id 
           WHERE n.id = ?
@@ -524,41 +524,41 @@ async function startServer() {
       io.emit("post:comment_new", { postId, comment });
     });
 
-    socket.on("user:follow", (data) => {
+    socket.on("user:follow", async (data) => {
       const { followerId, followingId } = data;
       try {
         const notifId = uuidv4();
-        db.prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)').run(followerId, followingId);
-        db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type) VALUES (?, ?, ?, ?)').run(
+        await db.prepare('INSERT INTO follows (follower_id, following_id) VALUES (?, ?)').run(followerId, followingId);
+        await db.prepare('INSERT INTO notifications (id, user_id, from_user_id, type) VALUES (?, ?, ?, ?)').run(
           notifId, followingId, followerId, 'follow'
         );
-        const notif = db.prepare(`
+        const notif = await db.prepare(`
           SELECT n.*, u.name as from_name, u.avatar_url as from_avatar_url
           FROM notifications n JOIN users u ON n.from_user_id = u.id 
           WHERE n.id = ?
         `).get(notifId);
         io.emit("notification:new", notif);
       } catch (e) {
-        db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?').run(followerId, followingId);
+        await db.prepare('DELETE FROM follows WHERE follower_id = ? AND following_id = ?').run(followerId, followingId);
       }
       io.emit("user:follow_update", { followerId, followingId });
     });
 
-    socket.on("news:bookmark", (data) => {
+    socket.on("news:bookmark", async (data) => {
       const { userId, newsId } = data;
       try {
-        db.prepare('INSERT INTO bookmarks (user_id, news_id) VALUES (?, ?)').run(userId, newsId);
+        await db.prepare('INSERT INTO bookmarks (user_id, news_id) VALUES (?, ?)').run(userId, newsId);
       } catch (e) {
-        db.prepare('DELETE FROM bookmarks WHERE user_id = ? AND news_id = ?').run(userId, newsId);
+        await db.prepare('DELETE FROM bookmarks WHERE user_id = ? AND news_id = ?').run(userId, newsId);
       }
     });
 
-    socket.on("message:send", (data) => {
+    socket.on("message:send", async (data) => {
       const { senderId, receiverId, text, media_url, media_type } = data;
       const id = uuidv4();
-      db.prepare('INSERT INTO messages (id, sender_id, receiver_id, text, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?)').run(id, senderId, receiverId, text, media_url || null, media_type || null);
+      await db.prepare('INSERT INTO messages (id, sender_id, receiver_id, text, media_url, media_type) VALUES (?, ?, ?, ?, ?, ?)').run(id, senderId, receiverId, text, media_url || null, media_type || null);
       
-      const sender = db.prepare('SELECT name, avatar_url FROM users WHERE id = ?').get(senderId) as any;
+      const sender = await db.prepare('SELECT name, avatar_url FROM users WHERE id = ?').get(senderId) as any;
       const msg = { 
         id, 
         senderId, 
@@ -573,17 +573,17 @@ async function startServer() {
       io.emit("message:new", msg);
     });
 
-    socket.on("live:start", (data) => {
+    socket.on("live:start", async (data) => {
       // Broadcast that a user started a live stream
       io.emit("live:started", data);
       io.emit("live:viewers", 1); // Mock viewers
     });
 
-    socket.on("live:end", (data) => {
+    socket.on("live:end", async (data) => {
       io.emit("live:ended", data);
     });
 
-    socket.on("live:message_send", (data) => {
+    socket.on("live:message_send", async (data) => {
       io.emit("live:message", data);
     });
 
@@ -623,7 +623,7 @@ async function startServer() {
     });
 
     // SPA fallback
-    app.get("*", (req, res) => {
+    app.get("*", async (req, res) => {
       const indexPath = path.join(distPath, "index.html");
       if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
@@ -636,16 +636,9 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
   console.log(`Attempting to start server on port ${PORT}...`);
   
-  if (process.env.NODE_ENV !== "production") {
-    httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`IEA Server is live on http://0.0.0.0:${PORT}`);
-    });
-  } else {
-    // In production (like Railway), we always listen on the provided PORT
-    httpServer.listen(PORT, "0.0.0.0", () => {
-      console.log(`IEA Production Server is live on port ${PORT}`);
-    });
-  }
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`IEA Server is live on http://0.0.0.0:${PORT}`);
+  });
   
   return app;
 }
