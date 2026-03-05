@@ -90,9 +90,9 @@ export const Live = ({ user }: { user: any }) => {
   };
 
   return (
-    <div className="pb-24 pt-8 px-6 flex h-screen max-w-6xl mx-auto gap-6">
+    <div className="pb-24 pt-8 px-4 md:px-6 flex flex-col md:flex-row h-screen max-w-6xl mx-auto gap-6">
       {/* Main Live Area */}
-      <div className="flex-1 flex flex-col gap-4">
+      <div className="flex-1 flex flex-col gap-4 min-h-[50vh] md:min-h-0">
         <div className="flex justify-between items-end">
           <div>
             <h1 className="text-4xl font-black tracking-tighter">Live Broadcast</h1>
@@ -131,7 +131,7 @@ export const Live = ({ user }: { user: any }) => {
                 </div>
               </div>
 
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-4 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={toggleMute}
                   className={cn(
@@ -159,7 +159,7 @@ export const Live = ({ user }: { user: any }) => {
               </div>
             </>
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 p-6">
               <div className="w-20 h-20 rounded-full bg-zinc-900 flex items-center justify-center text-white">
                 <Video size={32} />
               </div>
@@ -179,8 +179,8 @@ export const Live = ({ user }: { user: any }) => {
       </div>
 
       {/* Live Chat Sidebar */}
-      <div className="w-80 flex flex-col bg-zinc-50 rounded-[2.5rem] border border-black/5 overflow-hidden">
-        <div className="p-6 border-b border-black/5 bg-white/50 backdrop-blur-md">
+      <div className="w-full md:w-80 flex flex-col bg-zinc-50 rounded-[2.5rem] border border-black/5 overflow-hidden flex-1 md:flex-none">
+        <div className="p-4 md:p-6 border-b border-black/5 bg-white/50 backdrop-blur-md">
           <h2 className="font-black flex items-center gap-2">
             <MessageSquare size={16} />
             Live Chat

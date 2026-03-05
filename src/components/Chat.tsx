@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Send, MessageSquare, Search, UserCheck, Camera, Mic, Square } from "lucide-react";
+import { Send, MessageSquare, Search, UserCheck, Camera, Mic, Square, ArrowLeft } from "lucide-react";
 import socket from "@/src/lib/socket";
 import { cn } from "@/src/lib/utils";
 
@@ -153,9 +153,12 @@ export const Chat = ({ user }: { user: any }) => {
   };
 
   return (
-    <div className="pb-24 pt-8 px-6 flex h-screen max-w-6xl mx-auto gap-6">
+    <div className="pb-24 pt-8 px-4 md:px-6 flex h-screen max-w-6xl mx-auto gap-6 relative">
       {/* Sidebar */}
-      <div className="w-1/3 flex flex-col gap-6">
+      <div className={cn(
+        "w-full md:w-1/3 flex flex-col gap-6 transition-all duration-300",
+        selectedUser ? "hidden md:flex" : "flex"
+      )}>
         <div>
           <h1 className="text-4xl font-black tracking-tighter">Messages</h1>
           <p className="text-[10px] uppercase tracking-[0.4em] font-bold opacity-30">Direct Protocol</p>
@@ -187,11 +190,20 @@ export const Chat = ({ user }: { user: any }) => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-zinc-50 rounded-[2.5rem] border border-black/5 overflow-hidden relative">
+      <div className={cn(
+        "flex-1 flex flex-col bg-zinc-50 rounded-[2.5rem] border border-black/5 overflow-hidden relative",
+        !selectedUser ? "hidden md:flex" : "flex"
+      )}>
         {selectedUser ? (
           <>
-            <div className="p-6 border-b border-black/5 flex justify-between items-center bg-white/50 backdrop-blur-md z-10 absolute top-0 left-0 right-0">
+            <div className="p-4 md:p-6 border-b border-black/5 flex justify-between items-center bg-white/50 backdrop-blur-md z-10 absolute top-0 left-0 right-0">
               <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setSelectedUser(null)}
+                  className="md:hidden w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-black/5"
+                >
+                  <ArrowLeft size={18} />
+                </button>
                 <div className="w-10 h-10 rounded-xl bg-zinc-100 overflow-hidden">
                   {selectedUser.avatar_url ? (
                     <img src={selectedUser.avatar_url} alt={selectedUser.name} className="w-full h-full object-cover" />
